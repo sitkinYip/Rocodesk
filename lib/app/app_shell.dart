@@ -21,6 +21,7 @@ import 'package:flutter/material.dart';
 import '../core/bloodline_ranks.dart';
 import '../core/icon_assets.dart';
 import '../theme/tokens.dart';
+import '../features/builder/builder_page.dart';
 import '../features/generator/generator_page.dart';
 import '../features/parser/parse_page.dart';
 import '../features/settings/settings_page.dart';
@@ -101,6 +102,16 @@ class _AppShellState extends State<AppShell> {
     );
   }
 
+  /// 打开自主配队。
+  ///
+  /// 和另外两个一样是 push：它是一个**有明确起止的任务**
+  /// （选 6 只 → 调技能血脉 → 拿码 → 返回），不是常驻分区。
+  void _openBuilder() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const BuilderPage()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final wide = MediaQuery.sizeOf(context).width >= 720;
@@ -108,6 +119,7 @@ class _AppShellState extends State<AppShell> {
       ToolsPage(
         onOpenGenerator: _openGenerator,
         onOpenParser: _openParser,
+        onOpenBuilder: _openBuilder,
       ),
       SettingsPage(store: widget.store),
     ];

@@ -20,6 +20,7 @@ Future<void> _pump(WidgetTester tester, {
   Size size = const Size(390, 844),
   VoidCallback? onGenerator,
   VoidCallback? onParser,
+  VoidCallback? onBuilder,
 }) async {
   tester.view.physicalSize = size * 2;
   tester.view.devicePixelRatio = 2.0;
@@ -31,6 +32,7 @@ Future<void> _pump(WidgetTester tester, {
       body: ToolsPage(
         onOpenGenerator: onGenerator ?? () {},
         onOpenParser: onParser ?? () {},
+        onOpenBuilder: onBuilder ?? () {},
       ),
     ),
   ));
@@ -42,9 +44,10 @@ void main() {
     testWidgets('不放标题、不放事实条 —— 第一眼就是入口', (tester) async {
       await _pump(tester);
 
-      // 两个入口都在
+      // 三个入口都在
       expect(find.text('一图流生成阵容码'), findsOneWidget);
       expect(find.text('阵容码解析'), findsOneWidget);
+      expect(find.text('自主配队'), findsOneWidget);
 
       // 之前那两版头部的东西都不该回来
       expect(find.text('工具'), findsNothing, reason: '页面顶部不再放大标题');
@@ -120,8 +123,11 @@ void main() {
     testWidgets('点到卡片会回调，不是死的', (tester) async {
       var gen = 0;
       var parse = 0;
+      var build = 0;
       await _pump(tester,
-          onGenerator: () => gen++, onParser: () => parse++);
+          onGenerator: () => gen++,
+          onParser: () => parse++,
+          onBuilder: () => build++);
 
       await tester.tap(find.text('一图流生成阵容码'));
       await tester.pumpAndSettle();
@@ -130,6 +136,20 @@ void main() {
       await tester.tap(find.text('阵容码解析'));
       await tester.pumpAndSettle();
       expect(parse, 1, reason: '次卡点了要打开解析');
+
+      await tester.tap(find.text('自主配队'));
+      await tester.pumpAndSettle();
+      expect(build, 1, reason: '自主配队卡点了要打开配队页');
+    });
+
+    testWidgets('自主配队卡说得清"不用截图也不用码"', (tester) async {
+      await _pump(tester);
+      // 它跟另外两个的本质区别是**不需要任何输入**，文案必须点明，
+      // 否则用户会以为还得先有截图或码
+      expect(find.textContaining('不用截图、不用码'), findsOneWidget);
+      expect(find.text('623 只里搜'), findsOneWidget);
+      expect(find.text('能学什么就选什么'), findsOneWidget);
+      expect(find.text('改一项码就变'), findsOneWidget);
     });
   });
 

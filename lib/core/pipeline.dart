@@ -348,6 +348,18 @@ Team toCodecTeam(
   /// 所以改成必传：**要么给我表，要么别指望我正确解析血脉**。
   /// 这条 interface 改动是被一个真实的静默失败逼出来的。
   required CodecTables tables,
+
+  /// 跳过完全没填的格子。默认 false。
+  ///
+  /// 自主配队一进来就是 6 个空槽（空槽是"等待点选"的入口，不是错误），
+  /// 而识别/解析页的队伍每一只都来自识别结果、不存在空槽。
+  ///
+  /// 所以这个开关属于**调用方**的语义：开了表示
+  /// "空槽不要当成一只精灵，跳过它"。
+  ///
+  /// 不开的话空槽会走到下面抛「第 N 只还没选精灵」—— 那句话对识别页是对的
+  /// （真的漏了一只），对自主配队就变成"我只是还没选完就被拦住了"。
+  bool skipBlankSlots = false,
 }) {
   final pets = <Pet>[];
   for (var i = 0; i < rt.pets.length; i++) {
@@ -358,11 +370,15 @@ Team toCodecTeam(
     final chosenVariant = variantOverrides[n];
     // 换精灵：优先于「选形态」（用户可能直接换成完全不同的精灵）
     final chosenPet = petOverrides[n];
-    final petId = (chosenPet != null && chosenPet.isNotEmpty)
-        ? chosenPet
-        : ((chosenVariant != null && chosenVariant.isNotEmpty)
-            ? chosenVariant
-            : p.petId);
+    final petId = effectivePetCode(
+      p,
+      petOverride: chosenPet,
+      variantOverride: chosenVariant,
+    );
+
+    // 空槽：跳过（只在调用方声明了"空槽不是精灵"时才跳）
+    if (skipBlankSlots && petId.isEmpty && p.name.isEmpty) continue;
+
     // 用户在界面上修正过的技能整表覆盖（OCR 纠错、或自己重新搭配）
     final skills = skillOverrides[n] ?? p.skills;
     // 性格与个体资质同理
@@ -438,6 +454,32 @@ Team toCodecTeam(
 /// `map[name]` 返回 null，调用点静默回落成「无血脉」。
 String? _letterForName(CodecTables tables, String name) =>
     tables.bloodlineLetterFor(name);
+
+/// **某一格当前用哪个精灵码**。
+///
+/// 三处界面（识别 / 解析 / 自主配队）都要这个判断，所以抽出来一份。
+/// 优先级：
+///
+///   1. [petOverrides] —— 用户在界面上直接换掉的精灵（最强，压过一切）
+///   2. [variantOverrides] —— 用户在形态候选里选的那个
+///   3. `pet.petId` —— 识别/解析出来的
+///
+/// 界面要拿"这一格现在是什么精灵"时**必须走这个函数**：
+/// 各页面自己拼一份判断，迟早出现"改过精灵后技能池还是旧精灵的"这类不一致
+/// （这个仓库已经因为重码与换精灵的优先级不一致踩过一次）。
+///
+/// 空格子返回空串。
+String effectivePetCode(
+  RecognizedPet pet, {
+  String? petOverride,
+  String? variantOverride,
+}) {
+  if (petOverride != null && petOverride.isNotEmpty) return petOverride;
+  if (variantOverride != null && variantOverride.isNotEmpty) {
+    return variantOverride;
+  }
+  return pet.petId;
+}
 
 // ---------------------------------------------------------------------------
 // 解码方向：阵容码 -> 可展示的识别结果

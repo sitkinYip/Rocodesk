@@ -25,6 +25,7 @@ class ToolsPage extends StatelessWidget {
     super.key,
     required this.onOpenGenerator,
     required this.onOpenParser,
+    required this.onOpenBuilder,
   });
 
   /// 打开一图流生成。由外壳提供（它负责 push 路由）。
@@ -33,12 +34,15 @@ class ToolsPage extends StatelessWidget {
   /// 打开阵容码解析。
   final VoidCallback onOpenParser;
 
+  /// 打开自主配队。
+  final VoidCallback onOpenBuilder;
+
   @override
   Widget build(BuildContext context) {
     return ListView(
       padding: const EdgeInsets.fromLTRB(
         AppSpacing.page,
-        // 页面顶部只留一点点 —— 这一页就是"两个入口"，
+        // 页面顶部只留一点点 —— 这一页就是"几个入口"，
         // 任何标题/说明/数据都是在入口前面挡一层。
         // 前两版在这里放了大标题 + 事实条，实测反而更难看：入口被推下去了。
         AppSpacing.lg,
@@ -54,6 +58,22 @@ class ToolsPage extends StatelessWidget {
               '解析结果同样可以逐项手改，改完重新生成码。',
           icon: Icons.qr_code_2_outlined,
           onTap: onOpenParser,
+        ),
+        const SizedBox(height: AppSpacing.md),
+        // 自主配队：不依赖任何输入，所以放在两个"要输入"的功能后面。
+        // 它和识别/解析共用同一套编辑界面（`ResultView`），
+        // 所以三条路径出来的队伍长得一样、改法也一样。
+        _ToolCard(
+          title: '自主配队',
+          description: '不用截图、不用码，直接从图鉴里选 6 只，'
+              '逐只配性格、个体资质、血脉与技能，出阵容码和助手指令。',
+          icon: Icons.tune_outlined,
+          onTap: onOpenBuilder,
+          tags: const [
+            ('623 只里搜', Icons.search),
+            ('能学什么就选什么', Icons.rule),
+            ('改一项码就变', Icons.refresh),
+          ],
         ),
         const SizedBox(height: AppSpacing.xl),
 

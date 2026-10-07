@@ -147,7 +147,22 @@ class TeamCodec {
           slots.add('');
         }
       }
-      final names = codes.map(t.skillNameOf).toList();
+      // ⚠️ 空槽映射成空串，**不能**走 `skillNameOf` ——
+      // 那个查不到就返回 `unknownSkill`（「未知技能」），
+      // 于是空槽会显示成"未知技能"这种看着像出错的占位符。
+      //
+      // ⚠️ 也**必须跳过空槽**（紧凑），不能保留位置：Python 参考实现
+      // 就是这么做的，`assets/golden/teamcode_golden.json` 里有真实用例
+      // （如 `吹火,焚烧烙印,,爆米花爆破` -> python `吹火,焚烧烙印,爆米花爆破`）。
+      // 那份夹具是权威契约，改这里会让 593 条真实码的逐项比对失败。
+      //
+      // 代价：如果解码出的队伍里中间某格是空的，界面上会把它前面的技能
+      // 显示在更靠前的格子里（位置左移）。这是已知的、与参考实现一致的取舍 ——
+      // 要改就得**两边一起改并重新生成夹具**，不能只改 Dart 这边。
+      final names = [
+        for (final s in slots)
+          if (s.isNotEmpty) t.skillNameOf(s),
+      ];
 
       final pname = t.petNameOf(w);
       final fullBl = t.bloodline[blLetter] ?? '';
@@ -426,7 +441,14 @@ class TeamCodec {
         pet.petId = resolvePetId(pet.petName, strict: strict);
       }
       if (!t.petNames.containsKey(pet.petId)) {
-        throw TeamCodeException('$where 的精灵码「${pet.petId}」不在 pets 表内');
+        // 空槽（自主配队刚进来时每只都是空的）要给**可读的**提示。
+        // 原来不管哪种情况都说「精灵码「」不在 pets 表内」——
+        // 用户看到一个空引号加"表内"，不知道是让自己去选精灵。
+        throw TeamCodeException(
+          pet.petId.isEmpty
+              ? '第 ${i + 1} 只还没选精灵'
+              : '$where 的精灵码「${pet.petId}」不在图鉴里',
+        );
       }
       if (pet.petName.isEmpty || pet.petName == t.unknownPet) {
         pet.petName = t.petNames[pet.petId]!;
@@ -480,10 +502,30 @@ class TeamCodec {
       if (pet.skillSlots.isEmpty) {
         var codes = <String>[];
         for (final nm in pet.skills) {
-          if (nm == t.unknownSkill || nm.isEmpty) {
-            throw TeamCodeException('$where 的技能「$nm」无法反查技能码；请给出真实技能名');
+          // ⚠️ 空串是"这个槽是空的"，**不是**"有个技能叫空字符串"。
+          //
+          // 界面上删掉一个技能就是把那一槽设成 ''（见 `replaceSkill` 的注释），
+          // 所以这里必须跳过。原来把空串也当技能名，于是
+          // 「删掉一个技能」直接变成「无法反查技能码」—— 用户只是清空一格，
+          // 却被拦下来不让出码（而且提示里那个空引号看不懂）。
+          if (nm.isEmpty) {
+            // 空槽 = 这个槽没技能，跳过它。
+            //
+            // ⚠️ 不要"占一个位置"：Python 参考实现也是跳过的
+            // （见 `assets/golden/teamcode_golden.json` 里的真实用例），
+            // 保留位置会让 593 条真实码的逐项比对失败。
+            // 代价是"中间空一格"在界面上会显示成左移，这是既定取舍 ——
+            // 要改就得两边一起改并重新生成夹具。
+            continue;
+          }
+          if (nm == t.unknownSkill) {
+            throw TeamCodeException('$where 有一个技能没能反查出技能码；请给出真实技能名');
           }
           codes.add(resolveSkillCode(nm, strict: strict));
+        }
+        // 尾部空槽丢掉（写进去和没写等价，但少几段更短）
+        while (codes.isNotEmpty && codes.last.isEmpty) {
+          codes.removeLast();
         }
         if (codes.isEmpty && pet.skillCodes.isNotEmpty) {
           codes = pet.skillCodes.where(t.skillCodes.contains).toList();

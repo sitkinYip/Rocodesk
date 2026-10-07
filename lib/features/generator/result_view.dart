@@ -57,6 +57,16 @@ class ResultView extends StatelessWidget {
     this.primaryActionLabel = '重新识别',
     this.onPrimaryAction,
     this.onCopyCode,
+    // ---- 以下三项让「自主配队」能复用这个界面 ----
+    //
+    // 自主配队**没有识别过程**，而且一开始每只都是空槽。
+    // 所以「识别结果」「需要对上图鉴」「没能生成阵容码」这三句都不适用：
+    // 它们把"还没选精灵"说成了"识别失败"，用户会以为出了错。
+    this.petsSectionTitle = '识别结果',
+    this.emptyCodeMessage = '没能生成阵容码。',
+    this.emptyCodeSeverity = NoticeSeverity.error,
+    this.unresolvedBadge = '需要对上图鉴',
+    this.emptySlotLabel = '选择精灵',
   });
 
   final RecognizedTeam team;
@@ -134,6 +144,31 @@ class ResultView extends StatelessWidget {
   /// 「复制阵容码」按钮的回调。为 null 表示不显示这个按钮 ——
   /// 解析页属于这种情况：用户刚刚才把码粘进来，再给他一个复制按钮是多余的。
   final Future<void> Function(String text, String label)? onCopyCode;
+
+  // ---- 让「自主配队」能复用这个界面的四项 ----
+  //
+  // 自主配队没有识别过程，而且一开始全是空槽。下面四句原文案会把
+  // "还没选精灵"说成"识别失败" —— 用户会以为自己哪里做错了。
+
+  /// 精灵清单的标题（识别/解析页是「识别结果」）。
+  final String petsSectionTitle;
+
+  /// 还没出码时的提示（`codeError` 为空时用它）。
+  final String emptyCodeMessage;
+
+  /// 还没出码时那条提示的严重程度。
+  ///
+  /// 识别/解析页用 error（"该出码却出不来"确实是个问题）；
+  /// 自主配队一进来当然还没有码 —— 那是正常状态，用 info。
+  /// 拿红色告警去说"你还没开始选精灵"，用户会以为哪里坏了。
+  final NoticeSeverity emptyCodeSeverity;
+
+  /// 有名字但没对上图鉴时的红色角标。
+  final String unresolvedBadge;
+
+  /// 空槽的名字占位。空槽是**可点的入口**，不是错误状态，
+  /// 所以这里给的是一个动作提示（「选择精灵」），配色也用中性色。
+  final String emptySlotLabel;
 
   final ValueChanged<String?> onChooseMagic;
   final void Function(int index, String code) onChooseVariant;
@@ -268,8 +303,13 @@ class ResultView extends StatelessWidget {
                 ),
               ] else
                 InlineNotice(
-                  message: codeError.isEmpty ? '没能生成阵容码。' : codeError,
-                  severity: NoticeSeverity.error,
+                  message:
+                      codeError.isEmpty ? emptyCodeMessage : codeError,
+                  // 有 codeError 就一定是 error（那是真的出不来）；
+                  // 没有 codeError 说明是"还没开始"，严重程度由调用方定。
+                  severity: codeError.isEmpty
+                      ? emptyCodeSeverity
+                      : NoticeSeverity.error,
                 ),
             ],
           ),
@@ -278,7 +318,7 @@ class ResultView extends StatelessWidget {
 
         // ---------- 精灵清单 ----------
         SectionHeader(
-          title: '识别结果',
+          title: petsSectionTitle,
           subtitle: '共 ${team.pets.length} 只',
         ),
         AppGroup(
@@ -310,6 +350,8 @@ class ResultView extends StatelessWidget {
                   onEvsChanged: onEvsChanged == null
                       ? null
                       : (e) => onEvsChanged!(i + 1, e),
+                  unresolvedBadge: unresolvedBadge,
+                  emptySlotLabel: emptySlotLabel,
                   icons: icons,
                   bloodlineRanks: bloodlineRanks,
                 ),
@@ -379,6 +421,8 @@ class _PetRow extends StatelessWidget {
     required this.onEvsChanged,
     required this.icons,
     required this.bloodlineRanks,
+    required this.unresolvedBadge,
+    required this.emptySlotLabel,
   });
 
   final int index;
@@ -386,6 +430,11 @@ class _PetRow extends StatelessWidget {
   final String? overrideLetter;
   final String? chosenVariant;
 
+  /// 没对上图鉴时的红色角标文案（自主配队场景传「选择精灵」）。
+  final String unresolvedBadge;
+
+  /// 空槽的名字占位。空槽是可点的入口，不是错误。
+  final String emptySlotLabel;
   /// 用户在界面上修正过的技能表。为空表示用识别结果。
   final List<String>? skillOverride;
 
@@ -541,10 +590,21 @@ class _PetRow extends StatelessWidget {
             .where((v) => v.code == chosenVariant)
             .map((v) => v.name)
             .firstOrNull;
-    // 名字优先级：换精灵后的新名 > 选形态的名 > 识别/解析出的名
-    final displayName = (petOverride != null && petOverride!.isNotEmpty)
+    // 名字优先级：换精灵后的新名 > 选形态的名 > 识别/解析出的名 > 空槽占位
+    //
+    // 空槽占位用**动作提示**（「选择精灵」）而不是「未知宠物」：
+    // 空槽是等待用户去点的入口，不是"认不出来"。
+    final pickedName = (petOverride != null && petOverride!.isNotEmpty)
         ? (tables?.petNames[petOverride] ?? petOverride!)
         : (chosenName ?? pet.name);
+    final isBlankSlot = pickedName.isEmpty;
+    final displayName = isBlankSlot ? emptySlotLabel : pickedName;
+
+    /// 只有「读到了名字、但没对上图鉴」才是需要用户处理的错误。
+    ///
+    /// 空槽不给红角标：它是自主配队的正常初始状态，
+    /// 六个空槽顶六个红色错误会把界面变成一片红。
+    final showUnresolvedBadge = !resolved && pickedName.isNotEmpty;
     // 系别也要跟着换精灵走 —— 换完之后还显示旧精灵的系别是误导
     final displayTypes = (petOverride != null &&
             petOverride!.isNotEmpty &&
@@ -809,11 +869,11 @@ class _PetRow extends StatelessWidget {
                         ),
                       ),
                     ],
-                    if (!resolved) ...[
+                    if (showUnresolvedBadge) ...[
                       const SizedBox(width: AppSpacing.xs),
-                      const SemanticChip(
-                        label: '需要对上图鉴',
-                        color: Color(0xFFD70015),
+                      SemanticChip(
+                        label: unresolvedBadge,
+                        color: const Color(0xFFD70015),
                       ),
                     ],
                   ],
