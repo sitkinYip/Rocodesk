@@ -55,10 +55,14 @@ void main() {
 
   group('图标索引与文件要一致', () {
     late Map<String, dynamic> index;
+    late Map<String, dynamic> skills;
 
     setUpAll(() {
       index = jsonDecode(
         File('assets/icons/index.json').readAsStringSync(),
+      ) as Map<String, dynamic>;
+      skills = jsonDecode(
+        File('assets/data/skills.json').readAsStringSync(),
       ) as Map<String, dynamic>;
     });
 
@@ -139,7 +143,7 @@ void main() {
           reason: '这些文件名忽略大小写后重复，会互相覆盖：$dupes');
     });
 
-    test('用户这张图上的 6 只都有头像；技能图标只差 2 个（知识库就没图）', () {
+    test('用户这张图上的 6 只都有头像；技能图标现在 579/579 全都有', () {
       final pet = index['pet'] as Map<String, dynamic>;
       final skill = index['skill'] as Map<String, dynamic>;
 
@@ -149,23 +153,37 @@ void main() {
         expect(File(pet[code] as String).existsSync(), isTrue, reason: code);
       }
 
-      // 这张图上实际出现的技能。除了下面 2 个，全都有图标。
+      // 这张图上实际出现的技能 —— 全部都要有图标。
+      // 「雪原狩猎」「冷凝」曾经在这个名单里但没图（官方图鉴缺），
+      // 现在从 biligame WIKI 补齐了，所以它们也必须在。
       const onCard = [
         '暴风雪', '冰墙', '冬至', '超级糖果', '双星', '先发制人',
         '焚烧烙印', '火焰护盾', '炎枪', '筛管奔流', '晒太阳', '跺地',
         '力量增效', '隼鳞', '借用', '电弧', '报复',
+        '雪原狩猎', '冷凝',
       ];
       for (final name in onCard) {
         expect(skill.containsKey(name), isTrue, reason: '缺技能图标：$name');
         expect(File(skill[name] as String).existsSync(), isTrue, reason: name);
       }
+    });
 
-      // 这两个官方图鉴里就没有 icon_url（实测 97 个技能没图），
-      // 界面会退化成首字占位。明确记下来，免得以后以为漏导出了。
-      const knownNoArt = ['雪原狩猎', '冷凝'];
-      for (final name in knownNoArt) {
-        expect(skill.containsKey(name), isFalse,
-            reason: '$name 现在有图了？可以把它从 knownNoArt 挪到 onCard');
+    test('技能图标 579/579 —— 官方缺的 92 个已从 WIKI 补齐', () {
+      final skill = index['skill'] as Map<String, dynamic>;
+      final names = (skills['by_code'] as Map<String, dynamic>)
+          .values
+          .map((e) => e.toString())
+          .toSet();
+
+      expect(skill.length, names.length,
+          reason: '技能表 579 个，索引里也应当 579 个');
+      final missing = names.where((n) => !skill.containsKey(n)).toList();
+      expect(missing, isEmpty, reason: '还在缺图标: $missing');
+
+      // 每个映射到的文件都要真的在磁盘上（索引与实际必须一致）
+      for (final e in skill.entries) {
+        expect(File(e.value as String).existsSync(), isTrue,
+            reason: '${e.key} -> ${e.value} 文件不存在');
       }
     });
 

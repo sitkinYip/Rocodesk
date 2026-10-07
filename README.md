@@ -106,31 +106,47 @@ lib/
     settings/            Key / 模型 / 主题 / 资料库
   theme/                 设计 token（颜色/字号/圆角/动效），UI 层不写死色值
   widgets/               共用组件
-test/                    156 条，覆盖编解码等价性、纠错、数据更新、解析、UI
+test/                    209 条，覆盖编解码等价性、纠错、血脉联动、全字段编辑、解析、UI
 tool/                    开发期小工具（不在发布产物里）
 assets/
   data/                  编解码器数据表
-  icons/                 界面图标 1068 张
+  icons/                 界面图标 1160 张（技能 579 / 精灵 542 / 属性 18 / 血脉 21）
   golden/                编解码等价性测试夹具（**不打包进应用**）
 ```
 
-### 关于技能图标的 92 个缺口（数据源头如此，不是漏导出）
+### 技能图标：官方图鉴缺 92 个，已从 biligame WIKI 补齐
+
+官方图鉴（`compendium/a/s/<技能名>.png`）只给了 487/579 个技能配图，
+另外 92 个**在官方 CDN 上根本不存在**。这个结论核对过四个独立来源：
+
+| 检查 | 结果 |
+|---|---|
+| 官方 CDN 裸 URL / `?v=` / `?t=` | 有图的 200，缺图的一律 404 |
+| 官方图鉴的其他目录（12 个候选） | 全 404，只有 `a/s/` 存在 |
+| 小程序（洛克工具箱）自己的 `_skm` 表 | 正好 487 条，与"有图标的 487"完全重合，缺的 92 个一个没有 |
+| 两个 GitHub 镜像仓库（6 月 / 5 月快照） | 更旧，同样没有 |
+
+但**图标本身是存在的**。游戏客户端的 `SKILL_CONF.json` 指向图集坐标：
 
 ```
-技能总数 579
-有图标   487   （知识库里全都有 icon_url，且下载 0 失败）
-缺图标    92   （知识库里 icon_url 就是 null）
+冰爪 -> Texture2D'.../Atlas/SkillIcon/108020.108020'
+贪婪 -> Texture2D'.../Atlas/SkillIcon/718014.718014'
 ```
 
-原因：官方图鉴给技能图标依赖一个**美术资源 ID**（`move_id`）——
-有图标的 487 个里 470 个有 `move_id`，缺图标的 97 个里只有 5 个有。
-拿缺图的技能按 CDN 命名规则直接请求（`compendium/a/s/<技能名>.png`）
-实测 **404**，而有图的一律 200。所以那一批图在官方 CDN 上不存在。
+而 biligame《洛克王国世界》WIKI 正好按这个编号存图标（`文件:Skill 108020.png`），
+并且每个技能页都在 `<meta property="og:image">` 里给出图标地址
+（`og:image:alt` 明确写着"…技能图标"）—— MediaWiki 的 `pageimages` API
+**不返回**这个，所以只能抓 meta 标签。
 
-这 92 个技能**本身是有效的**（92/97 能在阵容码表里查到，游戏里真的能配），
-只是没有配图。界面会退化显示首字，不影响功能。
+补齐结果：**92/97 取到**，剩 5 个（愿力冲击 / 指指点点 / 泥沼 / 甜心护盾 / 聚能）
+WIKI 上也没有对应页面，保留退化显示首字。
 
-> 复核脚本：`python tools/analyze_missing_icons.py`
+> 复核与补齐脚本：
+> ```
+> python tools/analyze_missing_icons.py       # 缺口清单与成因
+> python tools/fetch_missing_skill_icons.py   # 从 biligame WIKI 补图
+> python tools/export_app_icons.py            # 导出到 app/assets/icons
+> ```
 
 ### 关于 `assets/golden/`（2.73 MB）
 
@@ -146,6 +162,12 @@ assets/
 `assets/data/*.json` 和 `assets/icons/*` 是从一份知识库导出的产物。
 **正常情况下你不需要重新生成它们** —— 仓库里已经带了完整的一份。
 
+> ⚠️ **下面这些 `tools/` 脚本不在这个仓库里。** 本仓库只包含 Flutter 应用
+> （`app/`）；导出工具链在开发机的上一级目录（`ds/tools/`），因为它还依赖
+> 一份体积较大的知识库与图标素材。所以 `python tools/...` 这些命令是
+> **开发机上的重建流程**，不是 clone 下来就能跑的。
+> 想自己重建的话，照着下面「需要」的三样准备，并使用同名脚本的等价实现。
+
 如果需要更新（例如游戏出了新精灵），需要：
 
 1. 一份知识库（精灵 / 技能 / 属性 / 血脉 / 性格）
@@ -153,10 +175,11 @@ assets/
 3. Python + Pillow
 
 ```bash
-python tools/export_data_for_app.py     # 数据表
-python tools/fetch_skill_icons.py       # 下载图标素材
-python tools/export_app_icons.py        # 生成界面图标
-python tools/make_golden_fixture.py     # 等价性测试夹具
+python tools/export_data_for_app.py          # 数据表
+python tools/fetch_skill_icons.py            # 官方图鉴的图标素材
+python tools/fetch_missing_skill_icons.py    # 官方缺的 92 个 -> biligame WIKI
+python tools/export_app_icons.py             # 生成界面图标
+python tools/make_golden_fixture.py          # 等价性测试夹具
 ```
 
 > ⚠️ `export_app_icons.py` 里有两条硬约束，**不遵守会静默出错**
