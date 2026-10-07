@@ -68,8 +68,9 @@ flutter:
   # 编解码器的数据表（由 tools/export_data_for_app.py 从 Python 端导出）
   assets:
     - assets/data/
-    # 界面图标（由 tools/export_app_icons.py 导出），约 5.4 MB：
-    #   血脉 21 个 96px / 属性 18 个 48px / 技能 487 个 48px / 精灵头像 542 个 64px
+    # 界面图标（由 tools/export_app_icons.py 导出），约 7 MB：
+    #   血脉 21 个 96px / 属性 18 个 48px / 技能 579 个 48px /
+    #   精灵头像 542 个 64px / 特性 242 个 48px
     #
     # ⚠️ 每个子目录都必须**单独列出**。只写 `- assets/icons/` 不会递归打包，
     # 而且漏声明是**静默**的 —— 构建不报错、运行时不报错，只是图片 404，
@@ -79,6 +80,7 @@ flutter:
     - assets/icons/type/
     - assets/icons/skill/
     - assets/icons/pet/
+    - assets/icons/trait/
   # 注意：assets/golden/ 故意不打包 —— 它是测试夹具（2.73 MB），
   # 由 test/codec_golden_test.dart **直接读文件**（不走 Flutter 资产层，
   # 跑得快且不需要 binding）。所以它必须留在仓库里，但不能进发布体积。

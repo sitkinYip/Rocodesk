@@ -60,7 +60,7 @@ Dart import             package:rocodesk/...
 ```bash
 flutter pub get
 flutter run                        # 调试
-flutter test                       # 156 条测试
+flutter test                       # 219 条测试
 flutter build web --release
 ```
 
@@ -110,7 +110,7 @@ test/                    209 条，覆盖编解码等价性、纠错、血脉联
 tool/                    开发期小工具（不在发布产物里）
 assets/
   data/                  编解码器数据表
-  icons/                 界面图标 1160 张（技能 579 / 精灵 542 / 属性 18 / 血脉 21）
+  icons/                 界面图标 1402 张（技能 579 / 精灵 542 / 特性 242 / 属性 18 / 血脉 21）
   golden/                编解码等价性测试夹具（**不打包进应用**）
 ```
 
@@ -148,8 +148,28 @@ WIKI 上也没有对应页面，保留退化显示首字。
 > python tools/export_app_icons.py            # 导出到 app/assets/icons
 > ```
 
-### 关于 `assets/golden/`（2.73 MB）
+### 特性（talent）：精灵固有，只展示不可改
 
+特性是精灵自带的被动 —— **一只是 1 个、不在阵容码里、改不了**。
+这和血脉是两件事：血脉 24 选 1 可改，特性天生固定。
+
+数据分两处（都是为了不撑大 `pets.json`）：
+
+```
+pets.json.ability_by_code   精灵码 -> 特性名（542 只）
+traits.json.by_name         特性名 -> {name, desc, icon}
+```
+
+图标 242/242 齐全：官方图鉴 `a/t/<特性名>.png` 给了 175 个，
+缺的 67 个从 biligame WIKI 补齐（同一套 `og:image` 抓法）。
+
+界面上是系别/血脉那一行里的一个芯片，**没有编辑入口** ——
+点开看完整描述，标题旁明确写「精灵固有 · 不可改」，
+免得用户去找"怎么改特性"。
+
+> 补齐脚本：`python tools/fetch_trait_icons.py`
+
+### 关于 `assets/golden/`（2.73 MB）
 这是 593 条真实阵容码的逐字段快照，`codec_golden_test.dart` 用它做编解码等价性验证。
 仓库里带了它，所以 **clone 下来不用先生成就能跑完整测试**。
 
@@ -171,13 +191,14 @@ WIKI 上也没有对应页面，保留退化显示首字。
 如果需要更新（例如游戏出了新精灵），需要：
 
 1. 一份知识库（精灵 / 技能 / 属性 / 血脉 / 性格）
-2. 图标素材（技能图标 128px、属性图标、血脉徽章、精灵头像）
+2. 图标素材（技能图标 128px、属性图标、血脉徽章、精灵头像、特性图标）
 3. Python + Pillow
 
 ```bash
-python tools/export_data_for_app.py          # 数据表
+python tools/export_data_for_app.py          # 数据表（含 pets/traits）
 python tools/fetch_skill_icons.py            # 官方图鉴的图标素材
-python tools/fetch_missing_skill_icons.py    # 官方缺的 92 个 -> biligame WIKI
+python tools/fetch_missing_skill_icons.py    # 官方缺的 92 个技能图 -> biligame WIKI
+python tools/fetch_trait_icons.py            # 特性图标（官方 175 + WIKI 67）
 python tools/export_app_icons.py             # 生成界面图标
 python tools/make_golden_fixture.py          # 等价性测试夹具
 ```

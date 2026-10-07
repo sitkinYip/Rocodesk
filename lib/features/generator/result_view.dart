@@ -438,6 +438,14 @@ class _PetRow extends StatelessWidget {
   bool get canEditNature => tables != null && onNatureChanged != null;
   bool get canEditEvs => tables != null && onEvsChanged != null;
 
+  /// 当前精灵的**特性名**（跟着换精灵走，不可编辑）。
+  ///
+  /// 特性是精灵的固有被动 —— 换精灵就换特性，用户改不了。
+  String? get traitName => tables?.abilityOf(effectivePetId);
+
+  /// 特性描述（可能为空）。
+  String? get traitDesc => tables?.abilityDescOf(effectivePetId);
+
   /// 当前血脉对应的系别（用于过滤血脉技能）。
   ///
   /// 血脉的 24 条里，18 条 elemental 各自对应一个系别；
@@ -537,6 +545,8 @@ class _PetRow extends StatelessWidget {
         (chosenVariant?.isNotEmpty ?? false) ||
         (petOverride?.isNotEmpty ?? false);
     final effectiveBloodline = overrideLetter ?? pet.bloodline;
+    // 取到局部变量 —— traitName 是 getter，Dart 的类型提升对它不生效
+    final trait = traitName;
     // 头像要跟着"当前生效的精灵码"走：用户选了形态或换了精灵就显示那个的头像，
     // 否则认错时头像会和名字不符，反而误导。
     final chosenName = chosenVariant == null
@@ -750,6 +760,16 @@ class _PetRow extends StatelessWidget {
                         label: t,
                         color: TypeColors.textOf(t, Theme.of(context).brightness),
                         imagePath: icons.typeIcon(t),
+                      ),
+                    // 特性：精灵自带的被动，**不可改**，所以只展示。
+                    // 与血脉的区别要分清：血脉 24 选 1 可改，特性天生固定。
+                    // （先取到局部变量：traitName 是 getter，Dart 的类型提升
+                    //   对它不生效，直接判空会报 unchecked_use_of_nullable_value）
+                    if (trait != null && trait.isNotEmpty)
+                      _TraitChip(
+                        name: trait,
+                        desc: traitDesc,
+                        iconPath: icons.traitIcon(trait),
                       ),
                     // 血脉：带图标，可点击修改。
                     // 注意走的是 changeBloodline（会连带清掉失效的血脉技能），
@@ -1634,6 +1654,109 @@ class _VariantChip extends StatelessWidget {
       ),
     );
   }
+}
+
+/// 特性芯片：图标 + 名字，点开看完整描述。
+///
+/// 特性是**精灵固有**的（不在阵容码里、不可改），所以这个芯片
+/// **没有编辑入口** —— 与旁边可点的性格/资质/血脉形成对比，一眼能分清
+/// "哪些是我能改的"。
+///
+/// 描述默认不显示：特性描述动辄 30+ 字，6 只精灵全铺开会把卡片撑爆，
+/// 而用户多数时候只想确认"特性对不对"。要看说明点一下即可。
+class _TraitChip extends StatelessWidget {
+  const _TraitChip({
+    required this.name,
+    required this.desc,
+    required this.iconPath,
+  });
+
+  final String name;
+
+  /// 为空表示数据包里没有这个特性的描述（仍显示名字）。
+  final String? desc;
+
+  final String? iconPath;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final hasDesc = desc != null && desc!.isNotEmpty;
+    final chip = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      decoration: BoxDecoration(
+        color: c.bgGrouped,
+        borderRadius: AppRadii.pillR,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (iconPath != null)
+            RefIcon(assetPath: iconPath, size: 16, fallbackText: name),
+          if (iconPath != null) const SizedBox(width: 4),
+          Text(
+            name,
+            style: TextStyle(
+              fontSize: AppType.sCaption,
+              color: c.textPrimary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          if (hasDesc) ...[
+            const SizedBox(width: 3),
+            Icon(Icons.info_outline, size: 11, color: c.textTertiary),
+          ],
+        ],
+      ),
+    );
+
+    if (!hasDesc) return chip;
+    return InkWell(
+      onTap: () => _showTraitSheet(context, name: name, desc: desc!),
+      borderRadius: AppRadii.pillR,
+      child: chip,
+    );
+  }
+}
+
+Future<void> _showTraitSheet(
+  BuildContext context, {
+  required String name,
+  required String desc,
+}) {
+  return showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    builder: (_) => Padding(
+      padding: const EdgeInsets.only(
+        left: AppSpacing.lg,
+        right: AppSpacing.lg,
+        bottom: AppSpacing.xl,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(name, style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(width: AppSpacing.sm),
+              // 明确写出来，免得用户找"怎么改特性"
+              Text(
+                '精灵固有 · 不可改',
+                style: TextStyle(
+                  fontSize: AppType.sCaption,
+                  color: context.colors.textTertiary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Text(desc, style: Theme.of(context).textTheme.bodyMedium),
+        ],
+      ),
+    ),
+  );
 }
 
 /// 一个"标签 + 值"的小单元。[onTap] 不为 null 时可点开修改。

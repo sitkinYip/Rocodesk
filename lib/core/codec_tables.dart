@@ -24,6 +24,7 @@ class CodecTables {
     required Map<String, dynamic> codec,
     Map<String, dynamic>? variantTypes,
     Map<String, dynamic>? learnsets,
+    Map<String, dynamic>? traits,
   }) {
     final raw = <String, dynamic>{
       'pets': pets,
@@ -31,10 +32,11 @@ class CodecTables {
       'natures': natures,
       'codec': codec,
     };
-    // 这两个都是可选文件：老数据包没有它们，缺了只影响消歧与纠错，
+    // 这几个都是可选文件：老数据包没有它们，缺了只影响消歧/纠错/特性展示，
     // 核心功能（识别 + 出码）不受影响。
     if (variantTypes != null) raw['variantTypes'] = variantTypes;
     if (learnsets != null) raw['learnsets'] = learnsets;
+    if (traits != null) raw['traits'] = traits;
     return CodecTables._(raw);
   }
 
@@ -61,6 +63,38 @@ class CodecTables {
                 k,
                 (v as List).map((e) => e.toString()).toList(),
               ));
+
+  /// 精灵码 -> **特性名**（每只 1 个）。
+  ///
+  /// 特性是精灵自带的被动，**既不在阵容码里，也不可改** —— 所以这里只做展示。
+  /// 与血脉的区别：血脉是 24 选 1 可改，特性是天生固定的。
+  late final Map<String, String> petAbilityByCode =
+      ((_pets['ability_by_code'] as Map<String, dynamic>?) ?? const {})
+          .cast<String, String>();
+
+  /// 特性名 -> `{name, desc, icon?}`。缺 traits.json 时为空（只是不展示）。
+  late final Map<String, Map<String, String>> traits = {
+    for (final e
+        in ((_raw['traits'] as Map<String, dynamic>?)?['by_name']
+                as Map<String, dynamic>? ??
+            const {})
+            .entries)
+      e.key: (e.value as Map<String, dynamic>).map(
+        (k, v) => MapEntry(k, v?.toString() ?? ''),
+      ),
+  };
+
+  /// 某个精灵码的特性名（没有返回 null）。
+  String? abilityOf(String? petCode) =>
+      petCode == null ? null : petAbilityByCode[petCode];
+
+  /// 某个精灵码的特性描述（没有返回 null）。
+  String? abilityDescOf(String? petCode) {
+    final nm = abilityOf(petCode);
+    if (nm == null) return null;
+    final d = traits[nm]?['desc'];
+    return (d == null || d.isEmpty) ? null : d;
+  }
 
   /// 技能名 -> 系别。
   ///

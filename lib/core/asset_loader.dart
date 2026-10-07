@@ -43,5 +43,6 @@ Future<CodecTables> loadCodecTablesFromAssets() async {
     codec: await read('codec.json'),
     variantTypes: await readOptional('variant_types.json'),
     learnsets: await readOptional('learnsets.json'),
+    traits: await readOptional('traits.json'),
   );
 }

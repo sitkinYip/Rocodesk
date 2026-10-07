@@ -28,10 +28,12 @@ class IconAssets {
     required Map<String, String> type,
     required Map<String, String> skill,
     required Map<String, String> pet,
+    Map<String, String> trait = const {},
   })  : _bloodline = bloodline,
         _type = type,
         _skill = skill,
-        _pet = pet;
+        _pet = pet,
+        _trait = trait;
 
   /// 血脉字母 -> 资源路径。
   final Map<String, String> _bloodline;
@@ -45,6 +47,9 @@ class IconAssets {
   /// 精灵码 -> 资源路径。
   final Map<String, String> _pet;
 
+  /// 特性名 -> 资源路径。
+  final Map<String, String> _trait;
+
   static IconAssets? _cache;
 
   /// 空实例：没有图标资源时用（界面退化成纯文字，功能不受影响）。
@@ -53,6 +58,7 @@ class IconAssets {
         type: const {},
         skill: const {},
         pet: const {},
+        trait: const {},
       );
 
   /// 载入索引（幂等，全局只读一次）。失败返回空实例。
@@ -62,9 +68,11 @@ class IconAssets {
   ///   type       属性名 -> 路径
   ///   skill      技能名 -> 路径
   ///   pet        阵容码 -> 路径
+  ///   trait      特性名 -> 路径（特性名就是 key，因为一只精灵只有一个特性）
   ///
-  /// 后三组直接取索引里的路径值 —— 文件名不一定是 key（技能用技能码、
-  /// 精灵用知识库数字 id，都是为了避开文件名大小写冲突），所以**不能**自己拼。
+  /// 后几组直接取索引里的路径值 —— 文件名不一定是 key（技能用技能码、
+  /// 精灵用知识库数字 id、特性用名字哈希，都是为了避开文件名大小写冲突
+  /// 或非法字符），所以**不能**自己拼。
   static Future<IconAssets> load() async {
     final cached = _cache;
     if (cached != null) return cached;
@@ -85,6 +93,7 @@ class IconAssets {
         type: paths('type'),
         skill: paths('skill'),
         pet: paths('pet'),
+        trait: paths('trait'),
       );
     } catch (_) {
       // 图标是可选增强：缺了功能照常，只是界面上没有图
@@ -93,10 +102,18 @@ class IconAssets {
   }
 
   bool get isEmpty =>
-      _bloodline.isEmpty && _type.isEmpty && _skill.isEmpty && _pet.isEmpty;
+      _bloodline.isEmpty &&
+      _type.isEmpty &&
+      _skill.isEmpty &&
+      _pet.isEmpty &&
+      _trait.isEmpty;
 
   int get count =>
-      _bloodline.length + _type.length + _skill.length + _pet.length;
+      _bloodline.length +
+      _type.length +
+      _skill.length +
+      _pet.length +
+      _trait.length;
 
   /// 某个血脉字母的图标路径；没有返回 null。
   String? bloodlineIcon(String letter) => _bloodline[letter];
@@ -106,6 +123,9 @@ class IconAssets {
 
   /// 某个技能名的图标路径；没有返回 null。
   String? skillIcon(String name) => _skill[name];
+
+  /// 特性图标。数据包缺 traits.json 时返回 null（界面退化显示名字首字）。
+  String? traitIcon(String name) => _trait[name];
 
   /// 某只精灵（按精灵码）的头像路径；没有返回 null。
   String? petIcon(String? petCode) =>
