@@ -66,7 +66,25 @@ tables.allDefaults         // codec.json 的全部默认值
 
 ---
 
-## 四、不变量测试
+## 四、编解码的行为由 golden 夹具定
+
+`assets/golden/teamcode_golden.json` 是 **Python 参考实现**生成的 593 条真实阵容码，
+`test/codec_golden_test.dart` 逐字段比对。**它是权威契约**：
+想改 `TeamCodec` 的编解码行为（例如"空技能槽要不要保留位置"），
+必须**两边一起改并重新生成夹具**，只改 Dart 那边一定会红。
+
+判断某个行为有没有被契约固定时，**别写统计脚本猜** —— 直接跑那个 golden 测试。
+我写过一个脚本查"夹具里有没有空技能槽"，它两次给出**相反的错误结论**
+（查错了字段：`skills` 已经是裁剪过的紧凑列表，空槽信息在 `skill_slots` 里），
+基于它改了 `decode` 与 `_prepare`，结果 593 条逐项比对失败。脚本已删除。
+
+同样地，**"还没开始"不是"出错了"**：自主配队一进来是 6 个空槽，那是正常状态。
+空槽用可点的入口（「选择精灵」）+ `info` 级提示；红色留给真错误
+（读到了名字但对不上图鉴）。
+
+---
+
+## 五、不变量测试
 
 规矩靠测试立住，不靠自觉。这些测试是**源码级**或**构造新数据**的，
 不依赖具体数据内容，所以数据怎么更新都不会过期：
@@ -74,6 +92,8 @@ tables.allDefaults         // codec.json 的全部默认值
 | 测试 | 钉住什么 |
 |---|---|
 | `test/data_driven_test.dart` | 血脉表加一条 → 代码自动认（热更新试金石）；源码里不许有「名→字母」映射表；不许有写死的系别集合；默认文案必须来自 `codec.json` |
+| `test/codec_golden_test.dart` | 593 条真实阵容码与 Python 参考实现逐字段一致（**编解码行为的权威契约**） |
+| `test/builder_page_test.dart` | 空队伍能出码、空槽被跳过、改任何一项码都跟着变、空槽不显示成错误 |
 | `test/type_colors_test.dart` | 18 个属性 + 6 条特殊血脉的标签对比度 ≥ 4.5:1；兜底色可读且与「普通」可分辨 |
 | `test/prompts_test.dart` | 提示词资产真的被打包、关键段落与 30 条性格表完整；`VlmClient` 接受提示词而不是自己读资产 |
 | `test/bloodline_picker_test.dart` | 血脉选择器一个不漏 |
@@ -83,9 +103,9 @@ tables.allDefaults         // codec.json 的全部默认值
 
 ---
 
-## 五、改动流程
+## 六、改动流程
 
-1. 先 `flutter analyze` 与 `flutter test`（259+ 条）拿到干净基线
+1. 先 `flutter analyze` 与 `flutter test`（281 条）拿到干净基线
 2. 改完再跑一次，**并跑 `flutter build web --release`** ——
    有些问题（资产漏打包、dart2js 的 `\uXXXX` 转义）只在构建产物里才暴露
 3. 视觉改动要**渲染出来看**，不要靠读代码判断：
@@ -95,7 +115,7 @@ tables.allDefaults         // codec.json 的全部默认值
 
 ---
 
-## 六、风格
+## 七、风格
 
 - 注释写**为什么**，不写是什么。尤其是"为什么这么写"
   和"不这么写会出什么事" —— 这个仓库里已经踩过的坑都写在附近
