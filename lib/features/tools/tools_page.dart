@@ -38,15 +38,14 @@ class ToolsPage extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(
         AppSpacing.page,
+        // 页面顶部只留一点点 —— 这一页就是"两个入口"，
+        // 任何标题/说明/数据都是在入口前面挡一层。
+        // 前两版在这里放了大标题 + 事实条，实测反而更难看：入口被推下去了。
         AppSpacing.lg,
         AppSpacing.page,
         AppSpacing.xxxl,
       ),
       children: [
-        const _ToolsHeader(),
-        const SizedBox(height: AppSpacing.xl),
-
-        const SectionHeader(title: '可用', subtitle: '点进去就能用'),
         _MainToolCard(onTap: onOpenGenerator),
         const SizedBox(height: AppSpacing.md),
         _ToolCard(
@@ -137,151 +136,6 @@ class ToolsPage extends StatelessWidget {
       },
     );
   }
-}
-
-/// 工具页头部。
-///
-/// ## 为什么是一行"事实条"而不是几个数字
-///
-/// 第一版这里只放了三段文字（标题 / 副标题 / 一行小数字），观感确实简陋：
-/// 三段都是左对齐的纯文字，左半边有内容右半边全空，读起来像文档开头
-/// 而不像一个产品页的开场。
-///
-/// 现在把"能打的地方"做成**等宽三栏的事实条**：每栏一个小标签 + 一个大值，
-/// 栏间一条竖直细线分隔。它把整行铺满，有了结构感，而且**信息本身有用**。
-///
-/// ## ⚠️ 这里曾经写过「离线可用」，是错的
-///
-/// 一图流生成**必须联网**：它要调用视觉模型 API（`VlmClient.analyzeImage`，
-/// 需要 baseUrl + apiKey）。把"离线可用"放在整页最显眼的位置是误导 ——
-/// 首页第一个入口恰恰是唯一需要联网的功能。
-///
-/// 所以现在只说**真正在本地完成**的那部分：「解析 · 改配 · 出码」。
-/// 这是实打实的：编码/解码、数据表、图标、纠错全在本地，
-/// 断网也能粘贴码反查、把每一项改完、重新出码。
-class _ToolsHeader extends StatelessWidget {
-  const _ToolsHeader();
-
-  /// 数据体量。**从数据表实际条目数来**，不要手写：
-  /// `test/tools_page_test.dart` 会核对它和 pets.json / skills.json 一致。
-  static const int kPetCount = 623;
-  static const int kSkillCount = 579;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('工具', style: context.texts.displaySmall),
-        // 间距阶梯 12 / 16：标题与副标题关系最近，副标题与事实条稍远 ——
-        // 先读"是什么"，再读"有多大"。
-        const SizedBox(height: AppSpacing.md),
-        Text(
-          '截图直接出阵容码，粘贴码反查出全队配置',
-          style: TextStyle(
-            fontSize: AppType.sSubhead,
-            color: c.textSecondary,
-            height: 1.4,
-          ),
-        ),
-        const SizedBox(height: AppSpacing.lg),
-        // 事实条：三栏等宽 + 竖线分隔。
-        //
-        // 为什么是"标签在上、值在下"而不是一行小字：值是给人看的重点
-        // （623 只精灵是个卖点），压成注释体量的细字就变成了纯装饰。
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _Fact(label: '收录精灵', value: '$kPetCount', unit: '只'),
-            _FactDivider(c: c),
-            _Fact(label: '收录技能', value: '$kSkillCount', unit: '个'),
-            _FactDivider(c: c),
-            // 标签与值都要短：这一栏是三栏里最长的，
-            // 原来写「解析 · 改配 · 出码」+「本地完成」，在 390px 上就换行了。
-            _Fact(label: '出码与改配', value: '本地', unit: '运行'),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
-/// 事实条里的一栏。
-class _Fact extends StatelessWidget {
-  const _Fact({required this.label, required this.value, required this.unit});
-
-  final String label;
-  final String value;
-  final String unit;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-    return Expanded(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: AppType.sCaption2,
-              color: c.textSecondary,
-              height: 1.2,
-            ),
-          ),
-          const SizedBox(height: AppSpacing.xs),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text(
-                value,
-                // 22px 粗体：这一栏是页面最有说服力的信息，值得这个体量。
-                style: TextStyle(
-                  fontFamilyFallback: AppType.monoFallback,
-                  fontSize: AppType.sTitle2,
-                  fontWeight: FontWeight.w700,
-                  color: c.textPrimary,
-                  height: 1.1,
-                ),
-              ),
-              const SizedBox(width: 3),
-              Flexible(
-                child: Text(
-                  unit,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: AppType.sCaption,
-                    color: c.textSecondary,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// 事实栏之间的竖直细线。
-class _FactDivider extends StatelessWidget {
-  const _FactDivider({required this.c});
-  final AppColors c;
-
-  @override
-  Widget build(BuildContext context) => Container(
-        width: 1,
-        height: 34,
-        // 边距用 sm(8) 而不是 md(12)：三栏 + 两条分隔线在 320px
-        // （iPhone SE 一代）上，12 的话每栏只剩 70px，值会折行。
-        margin: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
-        color: c.separator,
-      );
 }
 
 /// 工具卡：一个可用功能的入口。

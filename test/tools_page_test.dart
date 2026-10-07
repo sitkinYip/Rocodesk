@@ -1,30 +1,20 @@
 /// 「工具」页的界面契约。
 ///
-/// ## 为什么值得单独测
+/// ## 这一页的定位：**就是两个入口**
 ///
-/// 这一页的视觉层级是**刻意**做的，而且理由来自实测：
+/// 试过两版头部（大标题 + 事实条），都被否掉了 —— 实测"越改越难看"，
+/// 因为**入口被推下去了**。这一页没有需要解释的东西：
+/// 打开 app 看到两张卡，点哪张进哪个功能，就够了。
 ///
-///   * 头部三级层次（标题 / 定位一句话 / 数据事实行）
-///   * 主功能（一图流）权重高于次要功能（阵容码解析）
-///
-/// 这类东西最容易在后续改动里被磨平 —— 有人为了"统一"把两卡改成一样、
-/// 或把层级压回一行。测试在这里当护栏。
-///
-/// 另外头部那行数据（623 只 / 579 个技能）是**从数据表取的真实数字**，
-/// 不是文案。这里核对它和实际数据一致，避免更新数据后数字变假。
+/// 所以现在的规矩是：**页面顶部不放任何解释性内容**。
+/// 下面的测试盯住这条，以及卡片的层级与可点性。
 library;
-
-import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rocodesk/features/tools/tools_page.dart';
 import 'package:rocodesk/theme/app_theme.dart';
 import 'package:rocodesk/theme/tokens.dart';
-
-Map<String, dynamic> _read(String p) =>
-    jsonDecode(File(p).readAsStringSync()) as Map<String, dynamic>;
 
 Future<void> _pump(WidgetTester tester, {
   Size size = const Size(390, 844),
@@ -48,108 +38,34 @@ Future<void> _pump(WidgetTester tester, {
 }
 
 void main() {
-  group('头部', () {
-    testWidgets('三级层次都在：标题 / 定位一句话 / 事实条', (tester) async {
+  group('页面顶部', () {
+    testWidgets('不放标题、不放事实条 —— 第一眼就是入口', (tester) async {
       await _pump(tester);
 
-      // 一级
-      expect(find.text('工具'), findsOneWidget);
+      // 两个入口都在
+      expect(find.text('一图流生成阵容码'), findsOneWidget);
+      expect(find.text('阵容码解析'), findsOneWidget);
 
-      // 二级：说清"能干什么"，不是元信息（原来只是"一站式工具"）
-      expect(find.text('截图直接出阵容码，粘贴码反查出全队配置'), findsOneWidget);
-
-      // 三级：等宽三栏事实条
-      expect(find.text('收录精灵'), findsOneWidget);
-      expect(find.text('623'), findsOneWidget);
-      expect(find.text('收录技能'), findsOneWidget);
-      expect(find.text('579'), findsOneWidget);
-      expect(find.text('出码与改配'), findsOneWidget);
-      expect(find.text('本地'), findsOneWidget);
+      // 之前那两版头部的东西都不该回来
+      expect(find.text('工具'), findsNothing, reason: '页面顶部不再放大标题');
+      expect(find.text('截图直接出阵容码，粘贴码反查出全队配置'), findsNothing);
+      expect(find.text('收录精灵'), findsNothing);
+      expect(find.text('收录技能'), findsNothing);
+      expect(find.text('623'), findsNothing, reason: '不放数据事实条');
+      expect(find.text('可用'), findsNothing, reason: '入口不需要"可用"分组标题');
     });
 
-    testWidgets('头部不再声称「离线可用」—— 识别必须联网', (tester) async {
-      // 这是修正过的错误表述：一图流生成要调用视觉模型 API
-      // （VlmClient.analyzeImage，需要 baseUrl + apiKey），断网用不了。
-      // 把"离线可用"放在整页最显眼处是误导 —— 首页第一个入口恰恰要联网。
-      await _pump(tester);
-      expect(find.textContaining('离线'), findsNothing,
-          reason: '头部不该出现「离线」');
-      expect(find.textContaining('不联网也能用'), findsNothing);
-      // 但「本地完成的只是出码与改配」这句要保留（它是对的）
-      expect(find.text('出码与改配'), findsOneWidget);
-      expect(find.text('本地'), findsOneWidget);
-    });
-
-    testWidgets('主卡明确写出"识别要联网、之后的改配出码本地算"', (tester) async {
-      // 同上：把联网边界写在卡上，而不是笼统说"离线可用"。
-      // 它是**限制**，所以单独一行，不混进能力标签。
-      await _pump(tester);
-      expect(find.textContaining('识别需要联网并填 API Key'), findsOneWidget,
-          reason: '必须让用户知道识别那一步要联网 + 配 Key');
-      expect(find.textContaining('都是本地算'), findsOneWidget,
-          reason: '"本地"只覆盖识别之后的部分，要说准');
-      expect(find.text('离线可用'), findsNothing);
-      // 能力标签保持 3 个，别把限制也塞进去（会挤成两行）
-      expect(find.text('读系别与血脉图标'), findsOneWidget);
-      expect(find.text('结果可逐项调整'), findsOneWidget);
-    });
-
-    testWidgets('头部数字与数据表实际条目数一致', (tester) async {
-      // 防止手写数字过期：更新数据后这里会红，逼你去改头部
-      final pets = _read('assets/data/pets.json')['by_code'] as Map;
-      final skills = _read('assets/data/skills.json')['by_code'] as Map;
-
-      await _pump(tester);
-      expect(find.text('${pets.length}'), findsOneWidget,
-          reason: '头部精灵数应与 pets.json 一致（实际 ${pets.length}）');
-      expect(find.text('${skills.length}'), findsOneWidget,
-          reason: '头部技能数应与 skills.json 一致（实际 ${skills.length}）');
-    });
-
-    testWidgets('头部小字用 textSecondary 而非 textTertiary（对比度）',
-        (tester) async {
-      // 实测（tools/check_contrast.py）：亮色下 textTertiary(#8E8E93)
-      // 在 11px 上只有 3.26:1，低于 WCAG AA 的 4.5:1；
-      // textSecondary 是 5.07:1（分组底色上 4.54:1）都过。
-      // 这条盯住"别为了更淡的观感把它调回去"。
-      await _pump(tester);
-      final c = tester.element(find.text('收录精灵')).colors;
-
-      expect(c.textTertiary, isNot(c.textSecondary),
-          reason: '两个色若被改成一样，这条断言就失去意义了');
-
-      for (final label in const ['收录精灵', '收录技能', '出码与改配']) {
-        final t = tester.widget<Text>(find.text(label));
-        expect(t.style?.color, c.textSecondary,
-            reason: '「$label」是小字，必须用 textSecondary 才过 4.5:1');
-      }
-    });
-
-    testWidgets('最窄档（320px）也不溢出、值不折行', (tester) async {
-      // 事实条是三栏 + 两条分隔线，中文宽度不好估 ——
-      // 别靠心算，直接在窄屏上跑一遍看有没有 RenderFlex overflow。
-      await _pump(tester, size: const Size(320, 568));
-      expect(tester.takeException(), isNull,
-          reason: '320px（iPhone SE 一代）上头部不该溢出');
-      expect(find.text('623'), findsOneWidget);
-      expect(find.text('出码与改配'), findsOneWidget);
-
-      // 值必须单行：折了行的事实条看起来像布局坏了
-      for (final v in const ['623', '579', '本地']) {
-        final t = tester.widget<Text>(find.text(v));
-        expect(t.maxLines, isNull,
-            reason: '「$v」没有设 maxLines，靠 Flexible + ellipsis 兜底折行');
-      }
-      final box = tester.getSize(find.text('本地'));
-      expect(box.height, lessThan(40), reason: '「本地」不该折成两行');
+    testWidgets('第一个入口就在首屏顶部（没被任何东西推下去）', (tester) async {
+      await _pump(tester, size: const Size(390, 700));
+      final top = tester.getTopLeft(find.text('一图流生成阵容码')).dy;
+      expect(top, lessThan(80),
+          reason: '主卡标题应在顶部 80px 内，实测 $top —— 别在它上面加东西');
     });
   });
 
   group('卡片层级', () {
     testWidgets('两张可用卡都在，且描述可读', (tester) async {
       await _pump(tester);
-      expect(find.text('一图流生成阵容码'), findsOneWidget);
-      expect(find.text('阵容码解析'), findsOneWidget);
       // 主卡描述压短了，但仍要说清"上传截图 -> 出码"
       expect(find.textContaining('上传阵容截图'), findsOneWidget);
       expect(find.textContaining('粘贴一串阵容码'), findsOneWidget);
@@ -164,7 +80,6 @@ void main() {
       final c = tester.element(find.text('一图流生成阵容码')).colors;
 
       Border borderOf(String label) {
-        // 卡片最外层那个带 BoxDecoration 的 Container
         final container = tester.widget<Container>(
           find
               .ancestor(of: find.text(label), matching: find.byType(Container))
@@ -215,6 +130,21 @@ void main() {
       await tester.tap(find.text('阵容码解析'));
       await tester.pumpAndSettle();
       expect(parse, 1, reason: '次卡点了要打开解析');
+    });
+  });
+
+  group('联网边界（修正过的错误表述）', () {
+    testWidgets('主卡明确写出"识别要联网、之后的改配出码本地算"', (tester) async {
+      // 一图流识别要调用视觉模型 API（VlmClient.analyzeImage，
+      // 需要 baseUrl + apiKey），断网用不了。
+      // 原来写「离线可用」是误导 —— 首页最显眼的入口恰恰要联网。
+      await _pump(tester);
+      expect(find.textContaining('识别需要联网并填 API Key'), findsOneWidget,
+          reason: '必须让用户知道识别那一步要联网 + 配 Key');
+      expect(find.textContaining('都是本地算'), findsOneWidget,
+          reason: '"本地"只覆盖识别之后的部分，要说准');
+      expect(find.textContaining('离线'), findsNothing,
+          reason: '绝不能声称离线可用');
     });
   });
 
