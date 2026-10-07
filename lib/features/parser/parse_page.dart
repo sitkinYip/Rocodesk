@@ -183,14 +183,18 @@ class _ParsePageState extends State<ParsePage> {
     final o = _teamNameOverride;
     if (o != null && o.isNotEmpty) return o;
     final rt = _parsed;
-    return (rt != null && rt.teamName.isNotEmpty) ? rt.teamName : '未命名队伍';
+    // 默认名从数据表来（`codec.json.defaults.teamName`），不写死 ——
+    // 写死的话数据表换了、界面上显示的还是旧值
+    final fallback = _tables?.defaultTeamName ?? '';
+    return (rt != null && rt.teamName.isNotEmpty) ? rt.teamName : fallback;
   }
 
   String get _effectiveMagic {
     final o = _magicOverride;
     if (o != null && o.isNotEmpty) return o;
     final rt = _parsed;
-    return (rt != null && rt.magic.isNotEmpty) ? rt.magic : '进化之力';
+    final fallback = _tables?.defaultMagicName ?? '';
+    return (rt != null && rt.magic.isNotEmpty) ? rt.magic : fallback;
   }
 
   Future<void> _copy(String text, String label) async {

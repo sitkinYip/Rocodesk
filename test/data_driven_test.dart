@@ -176,5 +176,36 @@ void main() {
           reason: '这些文件里写死了系别集合，应该用 CodecTables.knownTypes：\n'
               '  ${bad.join('\n  ')}');
     });
+
+    test('默认文案不写死 —— 必须来自 codec.json.defaults', () {
+      // `codec.json.defaults` 里有 8 个默认值。界面与逻辑里再写一份字面量
+      // 就是又一份会漂移的副本：数据表换了、代码里还是旧值，
+      // 于是"码里编出来的东西"和"界面上显示的东西"对不上。
+      final defaults = _read('codec.json')['defaults'] as Map<String, dynamic>;
+      // 只查含中文的那几个（纯 ASCII 的 BPBRBU / V / T 在别处有合法用途）
+      final zhValues = defaults.values
+          .whereType<String>()
+          .where((v) => RegExp(r'[\u4e00-\u9fff]').hasMatch(v))
+          .toList();
+      expect(zhValues, isNotEmpty, reason: '数据表里应当有中文默认值');
+
+      final offenders = <String>[];
+      for (final f in Directory('lib').listSync(recursive: true)) {
+        if (f is! File || !f.path.endsWith('.dart')) continue;
+        final lines = f.readAsStringSync().split('\n');
+        for (var i = 0; i < lines.length; i++) {
+          final line = lines[i].trim();
+          if (line.startsWith('//')) continue; // 注释里提到不算
+          for (final v in zhValues) {
+            if (line.contains("'$v'") || line.contains('"$v"')) {
+              offenders.add('${f.path}:${i + 1} 含「$v」');
+            }
+          }
+        }
+      }
+      expect(offenders, isEmpty,
+          reason: '这些地方把默认文案写死了，应该用 tables.defaultXxx：\n'
+              '  ${offenders.join('\n  ')}');
+    });
   });
 }

@@ -164,6 +164,16 @@ class CodecTables {
   String get unknownPet => defaults['unknownPet']!;
   String get unknownSkill => defaults['unknownSkill']!;
 
+  /// `codec.json.defaults` 的**全部**键。
+  ///
+  /// ⚠️ 不要在界面或逻辑里再写一份这些字面量（'未命名队伍' / '进化之力' …）。
+  /// 它们本来就在数据表里，写死就是又一份会漂移的副本 ——
+  /// 数据表更新了、代码里还是旧值，界面上显示的东西和码里的不一致。
+  ///
+  /// 上面那些 `defaultXxx` getter 是类型安全的便捷入口；
+  /// 这个 map 给"想枚举全部默认值"的场景（例如测试核对没有遗漏）。
+  Map<String, String> get allDefaults => Map.unmodifiable(defaults);
+
   late final List<String> evOrder =
       (_codec['evOrder'] as List).cast<String>();
 

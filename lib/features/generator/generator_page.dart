@@ -192,11 +192,15 @@ class _GeneratorPageState extends State<GeneratorPage> {
   }
 
   /// 当前生效的队伍名。
+  ///
+  /// 兜底值从**数据表**来（`codec.json.defaults.teamName`）——
+  /// 原来这里写死 '未命名队伍'，数据表换了它不会跟着变。
   String get _effectiveTeamName {
     final o = _teamNameOverride;
     if (o != null && o.isNotEmpty) return o;
     final rt = _recognized;
-    return (rt != null && rt.teamName.isNotEmpty) ? rt.teamName : '未命名队伍';
+    final fallback = _tables?.defaultTeamName ?? '';
+    return (rt != null && rt.teamName.isNotEmpty) ? rt.teamName : fallback;
   }
 
   /// 可选的魔法列表（从知识库的 magic 表来，不写死）。
@@ -212,7 +216,8 @@ class _GeneratorPageState extends State<GeneratorPage> {
       return _magicOverride!;
     }
     final rt = _recognized;
-    return (rt != null && rt.magic.isNotEmpty) ? rt.magic : '进化之力';
+    final fallback = _tables?.defaultMagicName ?? '';
+    return (rt != null && rt.magic.isNotEmpty) ? rt.magic : fallback;
   }
 
   @override

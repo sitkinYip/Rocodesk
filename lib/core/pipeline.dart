@@ -410,16 +410,20 @@ Team toCodecTeam(
     ));
   }
   return Team(
-    // 队伍名：用户手改优先。空则用识别结果，再空则用默认名。
+    // 队伍名：用户手改优先。空则用识别结果，再空则用**数据表里的默认名**。
+    //
+    // ⚠️ 别在这里写 '未命名队伍' 这样的字面量 —— 它本来就在
+    // `codec.json.defaults.teamName` 里。写死就是又一份会漂移的副本。
     name: (teamNameOverride != null && teamNameOverride.isNotEmpty)
         ? teamNameOverride
-        : (rt.teamName.isNotEmpty ? rt.teamName : '未命名队伍'),
-    // 魔法：用户手改优先于模型识别。留空则由 codec 回落到进化之力。
+        : (rt.teamName.isNotEmpty ? rt.teamName : tables.defaultTeamName),
+    // 魔法同上：留空则用数据表里的默认魔法名。
     magic: (magicOverride != null && magicOverride.isNotEmpty)
         ? magicOverride
-        : (rt.magic.isNotEmpty ? rt.magic : '进化之力'),
-    // 头段必须显式给：为空时 encode 会回落到标准头段，但依赖兜底不如写明。
-    header: 'B',
+        : (rt.magic.isNotEmpty ? rt.magic : tables.defaultMagicName),
+    // 头段必须显式给。**从数据表取，不写死 'B'** ——
+    // 码里这个字段的含义是"格式版本"，格式真变了它就会变。
+    header: tables.header,
     pets: pets,
   );
 }
