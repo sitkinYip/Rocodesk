@@ -49,7 +49,7 @@ Future<void> _pump(WidgetTester tester, {
 
 void main() {
   group('头部', () {
-    testWidgets('三级层次都在：标题 / 定位一句话 / 数据事实行', (tester) async {
+    testWidgets('三级层次都在：标题 / 定位一句话 / 事实条', (tester) async {
       await _pump(tester);
 
       // 一级
@@ -58,12 +58,40 @@ void main() {
       // 二级：说清"能干什么"，不是元信息（原来只是"一站式工具"）
       expect(find.text('截图直接出阵容码，粘贴码反查出全队配置'), findsOneWidget);
 
-      // 三级：真实数据事实行
+      // 三级：等宽三栏事实条
+      expect(find.text('收录精灵'), findsOneWidget);
       expect(find.text('623'), findsOneWidget);
-      expect(find.text('只精灵'), findsOneWidget);
+      expect(find.text('收录技能'), findsOneWidget);
       expect(find.text('579'), findsOneWidget);
-      expect(find.text('个技能'), findsOneWidget);
-      expect(find.text('离线'), findsOneWidget);
+      expect(find.text('出码与改配'), findsOneWidget);
+      expect(find.text('本地'), findsOneWidget);
+    });
+
+    testWidgets('头部不再声称「离线可用」—— 识别必须联网', (tester) async {
+      // 这是修正过的错误表述：一图流生成要调用视觉模型 API
+      // （VlmClient.analyzeImage，需要 baseUrl + apiKey），断网用不了。
+      // 把"离线可用"放在整页最显眼处是误导 —— 首页第一个入口恰恰要联网。
+      await _pump(tester);
+      expect(find.textContaining('离线'), findsNothing,
+          reason: '头部不该出现「离线」');
+      expect(find.textContaining('不联网也能用'), findsNothing);
+      // 但「本地完成的只是出码与改配」这句要保留（它是对的）
+      expect(find.text('出码与改配'), findsOneWidget);
+      expect(find.text('本地'), findsOneWidget);
+    });
+
+    testWidgets('主卡明确写出"识别要联网、之后的改配出码本地算"', (tester) async {
+      // 同上：把联网边界写在卡上，而不是笼统说"离线可用"。
+      // 它是**限制**，所以单独一行，不混进能力标签。
+      await _pump(tester);
+      expect(find.textContaining('识别需要联网并填 API Key'), findsOneWidget,
+          reason: '必须让用户知道识别那一步要联网 + 配 Key');
+      expect(find.textContaining('都是本地算'), findsOneWidget,
+          reason: '"本地"只覆盖识别之后的部分，要说准');
+      expect(find.text('离线可用'), findsNothing);
+      // 能力标签保持 3 个，别把限制也塞进去（会挤成两行）
+      expect(find.text('读系别与血脉图标'), findsOneWidget);
+      expect(find.text('结果可逐项调整'), findsOneWidget);
     });
 
     testWidgets('头部数字与数据表实际条目数一致', (tester) async {
@@ -85,27 +113,35 @@ void main() {
       // textSecondary 是 5.07:1（分组底色上 4.54:1）都过。
       // 这条盯住"别为了更淡的观感把它调回去"。
       await _pump(tester);
-      final c = tester.element(find.text('只精灵')).colors;
+      final c = tester.element(find.text('收录精灵')).colors;
 
       expect(c.textTertiary, isNot(c.textSecondary),
           reason: '两个色若被改成一样，这条断言就失去意义了');
 
-      for (final label in const ['只精灵', '个技能', '不联网也能用']) {
+      for (final label in const ['收录精灵', '收录技能', '出码与改配']) {
         final t = tester.widget<Text>(find.text(label));
         expect(t.style?.color, c.textSecondary,
             reason: '「$label」是小字，必须用 textSecondary 才过 4.5:1');
       }
     });
 
-    testWidgets('最窄档（320px）也不溢出', (tester) async {
-      // 事实行是"数字 单位 · 数字 单位 · 数字 单位"，中文宽度不好估 ——
+    testWidgets('最窄档（320px）也不溢出、值不折行', (tester) async {
+      // 事实条是三栏 + 两条分隔线，中文宽度不好估 ——
       // 别靠心算，直接在窄屏上跑一遍看有没有 RenderFlex overflow。
       await _pump(tester, size: const Size(320, 568));
       expect(tester.takeException(), isNull,
           reason: '320px（iPhone SE 一代）上头部不该溢出');
-      // 溢出不抛异常而是画黄黑条时，会记进 FlutterError
       expect(find.text('623'), findsOneWidget);
-      expect(find.text('不联网也能用'), findsOneWidget);
+      expect(find.text('出码与改配'), findsOneWidget);
+
+      // 值必须单行：折了行的事实条看起来像布局坏了
+      for (final v in const ['623', '579', '本地']) {
+        final t = tester.widget<Text>(find.text(v));
+        expect(t.maxLines, isNull,
+            reason: '「$v」没有设 maxLines，靠 Flexible + ellipsis 兜底折行');
+      }
+      final box = tester.getSize(find.text('本地'));
+      expect(box.height, lessThan(40), reason: '「本地」不该折成两行');
     });
   });
 

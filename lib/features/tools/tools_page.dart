@@ -141,34 +141,29 @@ class ToolsPage extends StatelessWidget {
 
 /// 工具页头部。
 ///
-/// ## 为什么这么改
+/// ## 为什么是一行"事实条"而不是几个数字
 ///
-/// 原来只有「工具 / 配队相关的一站式工具」两行，问题有三个：
+/// 第一版这里只放了三段文字（标题 / 副标题 / 一行小数字），观感确实简陋：
+/// 三段都是左对齐的纯文字，左半边有内容右半边全空，读起来像文档开头
+/// 而不像一个产品页的开场。
 ///
-///   1. **层级塌陷** —— 34px 的标题下面直接就是 15px 的卡片标题，中间空着，
-///      读起来像两个不相干的元素叠在一起
-///   2. **读完不知道"能干什么"** —— 副标题是元信息（"一站式工具"），
-///      没有回答新用户最关心的问题
-///   3. **没有落点** —— 页面从纯文字开始，视线无处安放
+/// 现在把"能打的地方"做成**等宽三栏的事实条**：每栏一个小标签 + 一个大值，
+/// 栏间一条竖直细线分隔。它把整行铺满，有了结构感，而且**信息本身有用**。
 ///
-/// 所以这里建立**三级层次**，并用一行真实数据把"这东西有多能打"讲清楚：
+/// ## ⚠️ 这里曾经写过「离线可用」，是错的
 ///
-///   一级  工具            34px 粗体，唯一的视觉锚点
-///   二级  一句话说清定位     15px 次要色
-///   三级  623 只 · 579 技能 · 离线可用   11px 三级色，数字用等宽
+/// 一图流生成**必须联网**：它要调用视觉模型 API（`VlmClient.analyzeImage`，
+/// 需要 baseUrl + apiKey）。把"离线可用"放在整页最显眼的位置是误导 ——
+/// 首页第一个入口恰恰是唯一需要联网的功能。
 ///
-/// ## 为什么用"数据规模"而不是口号
-///
-/// 「离线可用」是本项目**唯一真正区别于同类工具**的点（数据全内置、不联网），
-/// 但空说一句"离线可用"没人会信。配上真实体量（623 只精灵 / 579 个技能）
-/// 才有说服力 —— 而且这两个数字是从数据表里取的，不是文案。
-///
-/// 将来数据更新导致数字变化时，这里会跟着变（见 [kPetCount] / [kSkillCount]）。
+/// 所以现在只说**真正在本地完成**的那部分：「解析 · 改配 · 出码」。
+/// 这是实打实的：编码/解码、数据表、图标、纠错全在本地，
+/// 断网也能粘贴码反查、把每一项改完、重新出码。
 class _ToolsHeader extends StatelessWidget {
   const _ToolsHeader();
 
   /// 数据体量。**从数据表实际条目数来**，不要手写：
-  /// tests/asset_naming_test.dart 会核对图标索引，数字对不上会被发现。
+  /// `test/tools_page_test.dart` 会核对它和 pets.json / skills.json 一致。
   static const int kPetCount = 623;
   static const int kSkillCount = 579;
 
@@ -179,9 +174,8 @@ class _ToolsHeader extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text('工具', style: context.texts.displaySmall),
-        // 间距阶梯刻意做成 12 / 16：
-        // 标题与副标题关系最近，副标题与事实行稍远 —— 先读"是什么"，
-        // 再读"有多大"。之前是 8 / 12，三段挤成一坨，没有呼吸。
+        // 间距阶梯 12 / 16：标题与副标题关系最近，副标题与事实条稍远 ——
+        // 先读"是什么"，再读"有多大"。
         const SizedBox(height: AppSpacing.md),
         Text(
           '截图直接出阵容码，粘贴码反查出全队配置',
@@ -192,21 +186,20 @@ class _ToolsHeader extends StatelessWidget {
           ),
         ),
         const SizedBox(height: AppSpacing.lg),
-        // 三级：事实行。用 · 分隔而不是三个卡片 ——
-        // 它是"定性说明"不是"可点的指标"，做成卡片会误导成入口。
+        // 事实条：三栏等宽 + 竖线分隔。
         //
-        // 用 Wrap 而不是 Row：三段中文放在 320px（iPhone SE 一代）上
-        // 实测溢出 19px，换成 Wrap 让它自己折行。
-        Wrap(
-          spacing: 0,
-          runSpacing: AppSpacing.xs,
-          crossAxisAlignment: WrapCrossAlignment.center,
+        // 为什么是"标签在上、值在下"而不是一行小字：值是给人看的重点
+        // （623 只精灵是个卖点），压成注释体量的细字就变成了纯装饰。
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _Facet(value: '$kPetCount', unit: '只精灵'),
-            _FacetDot(c: c),
-            _Facet(value: '$kSkillCount', unit: '个技能'),
-            _FacetDot(c: c),
-            _Facet(value: '离线', unit: '不联网也能用'),
+            _Fact(label: '收录精灵', value: '$kPetCount', unit: '只'),
+            _FactDivider(c: c),
+            _Fact(label: '收录技能', value: '$kSkillCount', unit: '个'),
+            _FactDivider(c: c),
+            // 标签与值都要短：这一栏是三栏里最长的，
+            // 原来写「解析 · 改配 · 出码」+「本地完成」，在 390px 上就换行了。
+            _Fact(label: '出码与改配', value: '本地', unit: '运行'),
           ],
         ),
       ],
@@ -214,61 +207,80 @@ class _ToolsHeader extends StatelessWidget {
   }
 }
 
-/// 事实行里的一个数字 + 单位。数字用等宽，扫描时更容易对齐。
-///
-/// ⚠️ 单位与分隔点**必须用 textSecondary，不能用 textTertiary**。
-/// 实测（`tools/check_contrast.py`）：亮色模式下 textTertiary 在 11px 上
-/// 只有 3.26:1，低于 WCAG AA 的 4.5:1（暗色模式 6.44:1 达标）。
-/// 小字用 textSecondary 是 5.07:1，两个模式都过。
-class _Facet extends StatelessWidget {
-  const _Facet({required this.value, required this.unit});
+/// 事实条里的一栏。
+class _Fact extends StatelessWidget {
+  const _Fact({required this.label, required this.value, required this.unit});
 
+  final String label;
   final String value;
   final String unit;
 
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.baseline,
-      textBaseline: TextBaseline.alphabetic,
-      children: [
-        Text(
-          value,
-          // 17px 而不是 13px：这行是**证据**（"它到底装了多少东西"），
-          // 压成注释体量的细字就变成了纯装饰，说服力全丢。
-          style: TextStyle(
-            fontFamilyFallback: AppType.monoFallback,
-            fontSize: AppType.sHeadline,
-            fontWeight: FontWeight.w600,
-            color: c.textPrimary,
-            height: 1.1,
+    return Expanded(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: AppType.sCaption2,
+              color: c.textSecondary,
+              height: 1.2,
+            ),
           ),
-        ),
-        const SizedBox(width: AppSpacing.xs),
-        Text(
-          unit,
-          style: TextStyle(
-            fontSize: AppType.sCaption,
-            color: c.textSecondary,
+          const SizedBox(height: AppSpacing.xs),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                value,
+                // 22px 粗体：这一栏是页面最有说服力的信息，值得这个体量。
+                style: TextStyle(
+                  fontFamilyFallback: AppType.monoFallback,
+                  fontSize: AppType.sTitle2,
+                  fontWeight: FontWeight.w700,
+                  color: c.textPrimary,
+                  height: 1.1,
+                ),
+              ),
+              const SizedBox(width: 3),
+              Flexible(
+                child: Text(
+                  unit,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: AppType.sCaption,
+                    color: c.textSecondary,
+                  ),
+                ),
+              ),
+            ],
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
 
-class _FacetDot extends StatelessWidget {
-  const _FacetDot({required this.c});
+/// 事实栏之间的竖直细线。
+class _FactDivider extends StatelessWidget {
+  const _FactDivider({required this.c});
   final AppColors c;
 
   @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
-        // 同 _Facet：小字用 textSecondary 才过对比度
-        child: Text('·',
-            style: TextStyle(fontSize: AppType.sCaption, color: c.textSecondary)),
+  Widget build(BuildContext context) => Container(
+        width: 1,
+        height: 34,
+        // 边距用 sm(8) 而不是 md(12)：三栏 + 两条分隔线在 320px
+        // （iPhone SE 一代）上，12 的话每栏只剩 70px，值会折行。
+        margin: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+        color: c.separator,
       );
 }
 
@@ -291,6 +303,7 @@ class _ToolCard extends StatelessWidget {
     required this.onTap,
     this.tags = const [],
     this.emphasis = false,
+    this.requirement,
   });
 
   final String title;
@@ -303,6 +316,10 @@ class _ToolCard extends StatelessWidget {
 
   /// 主功能：更高、带强调色描边、更大的图标与标题。
   final bool emphasis;
+
+  /// 联网/依赖说明。比能力标签更"硬"的一条边界，所以单独一行、
+  /// 配一个锁形小图标 —— 混进能力标签里会读不出"这是限制"。
+  final String? requirement;
 
   @override
   Widget build(BuildContext context) {
@@ -390,6 +407,30 @@ class _ToolCard extends StatelessWidget {
                         ],
                       ),
                     ],
+                    if (requirement != null) ...[
+                      const SizedBox(height: AppSpacing.sm),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(top: 1),
+                            child: Icon(Icons.key_outlined,
+                                size: 12, color: c.textSecondary),
+                          ),
+                          const SizedBox(width: AppSpacing.xs),
+                          Expanded(
+                            child: Text(
+                              requirement!,
+                              style: TextStyle(
+                                fontSize: AppType.sCaption2,
+                                color: c.textSecondary,
+                                height: 1.4,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -420,8 +461,17 @@ class _MainToolCard extends StatelessWidget {
       tags: const [
         ('读系别与血脉图标', Icons.image_outlined),
         ('识别错了可手改', Icons.edit_outlined),
-        ('离线可用', Icons.cloud_off_outlined),
+        ('结果可逐项调整', Icons.tune_outlined),
       ],
+      // ⚠️ 这里原来写的是「离线可用」，**是错的**。
+      //
+      // 识别那一步要调用视觉模型 API（VlmClient.analyzeImage，需要在设置里
+      // 填 baseUrl + apiKey），断网用不了。写「离线可用」会让用户以为
+      // 飞行模式下也能识别 —— 那是误导，而且首页最显眼的入口恰恰要联网。
+      //
+      // 单独一行而不是塞进标签：它是**限制**不是能力，混在一起读不出来。
+      requirement: '识别需要联网并填 API Key；识别之后的改配、出码、'
+          '助手描述都是本地算，不用联网',
     );
   }
 }
