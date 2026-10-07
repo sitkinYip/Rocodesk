@@ -74,6 +74,15 @@ class _GeneratorPageState extends State<GeneratorPage> {
   /// 用户手动改过的魔法名。为空表示用模型识别的结果。
   String? _magicOverride;
 
+  /// 用户换掉的精灵（精灵码），键是「第几只」。
+  final Map<int, String> _petOverrides = {};
+
+  /// 用户改过的性格，键是「第几只」。
+  final Map<int, String> _natureOverrides = {};
+
+  /// 用户改过的个体资质，键是「第几只」。
+  final Map<int, List<String>> _evOverrides = {};
+
   /// 用户手动改过的队伍名。为空表示用识别结果。
   ///
   /// 注意：队伍名**不进阵容码**，只影响展示和导出的文本。
@@ -124,6 +133,27 @@ class _GeneratorPageState extends State<GeneratorPage> {
   /// 用户改了魔法 -> 就地重新出码。
   void _applyMagicFix(String? magic) {
     setState(() => _magicOverride = magic);
+    _reencode();
+  }
+
+  /// 用户换了精灵 -> 就地重新出码。
+  ///
+  /// 换精灵时把这一只的其他覆盖留下（技能/性格/资质）—— 用户可能先改了
+  /// 那些再换精灵；技能学不学得了由界面提示，不在这里悄悄清掉。
+  void _applyPetFix(int index, String petId) {
+    setState(() => _petOverrides[index] = petId);
+    _reencode();
+  }
+
+  /// 用户改了性格 -> 就地重新出码。
+  void _applyNatureFix(int index, String nature) {
+    setState(() => _natureOverrides[index] = nature);
+    _reencode();
+  }
+
+  /// 用户改了个体资质 -> 就地重新出码。
+  void _applyEvsFix(int index, List<String> evs) {
+    setState(() => _evOverrides[index] = evs);
     _reencode();
   }
 
@@ -346,6 +376,10 @@ class _GeneratorPageState extends State<GeneratorPage> {
         skillOverrides: _skillOverrides,
         magicOverride: _magicOverride,
         teamNameOverride: _teamNameOverride,
+        petOverrides: _petOverrides,
+        natureOverrides: _natureOverrides,
+        evOverrides: _evOverrides,
+        tables: _tables,
       );
       final code = codec.encode(team);
       final aiText = codec.toGameText(team);
@@ -530,6 +564,16 @@ class _GeneratorPageState extends State<GeneratorPage> {
             // 识别页：码是产出，所以给「复制走」和「识别错了重来」两个动作
             onCopyCode: _copy,
             onPrimaryAction: _analyze,
+            // ---- 整队可编辑 ----
+            // 用户要的是"拿到一图流之后还能自己搭配"，所以精灵、性格、
+            // 个体资质、血脉、技能全部开放修改，而不只是修正识别错误。
+            tables: _tables,
+            petOverrides: _petOverrides,
+            natureOverrides: _natureOverrides,
+            evOverrides: _evOverrides,
+            onPetChanged: _applyPetFix,
+            onNatureChanged: _applyNatureFix,
+            onEvsChanged: _applyEvsFix,
           ),
         ],
         ],

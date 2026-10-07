@@ -331,18 +331,42 @@ Team toCodecTeam(
   Map<int, List<String>> skillOverrides = const {},
   String? magicOverride,
   String? teamNameOverride,
+  // ---- 下面这些让"整支队伍完全可编辑"成为可能 ----
+  //
+  // 键统一是「第几只」（从 1 开始）。
+  //
+  // 为什么用一堆并列的 Map 而不是一个可变的 Pet 对象：这些覆盖只有在
+  // **出码那一刻**才有意义，而 `RecognizedTeam` 是识别结果、不该被就地改写。
+  // 并列 Map 让"识别结果"和"用户改动"始终是两份独立的数据 ——
+  // 这正是「重新识别」能一键回到原样的原因。
+  Map<int, String> petOverrides = const {},
+  Map<int, String> natureOverrides = const {},
+  Map<int, List<String>> evOverrides = const {},
+  /// 数据表，用于**换了精灵之后反查新名字**。
+  ///
+  /// 不传时新精灵的名字会是识别时的旧名字 —— 那只影响显示与导出文本，
+  /// 不影响阵容码（码里只有精灵码）。界面都应当传。
+  CodecTables? tables,
 }) {
   final pets = <Pet>[];
   for (var i = 0; i < rt.pets.length; i++) {
     final p = rt.pets[i];
     // 编号从 1 开始，和界面上显示的第 N 只一致
-    final override = bloodlineOverrides[i + 1];
-    final chosenVariant = variantOverrides[i + 1];
-    final petId = (chosenVariant != null && chosenVariant.isNotEmpty)
-        ? chosenVariant
-        : p.petId;
-    // 用户在界面上修正过的技能整表覆盖（OCR 错字纠错的结果）
-    final skills = skillOverrides[i + 1] ?? p.skills;
+    final n = i + 1;
+    final override = bloodlineOverrides[n];
+    final chosenVariant = variantOverrides[n];
+    // 换精灵：优先于「选形态」（用户可能直接换成完全不同的精灵）
+    final chosenPet = petOverrides[n];
+    final petId = (chosenPet != null && chosenPet.isNotEmpty)
+        ? chosenPet
+        : ((chosenVariant != null && chosenVariant.isNotEmpty)
+            ? chosenVariant
+            : p.petId);
+    // 用户在界面上修正过的技能整表覆盖（OCR 纠错、或自己重新搭配）
+    final skills = skillOverrides[n] ?? p.skills;
+    // 性格与个体资质同理
+    final nature = natureOverrides[n] ?? p.nature;
+    final evs = evOverrides[n] ?? p.evs;
 
     String letter;
     String name;
@@ -370,9 +394,13 @@ Team toCodecTeam(
 
     pets.add(Pet(
       petId: petId,
-      petName: p.name,
-      nature: p.nature,
-      evsList: p.evs,
+      // 换了精灵时名字要跟着换 —— 否则界面上会出现"寂灭骨龙"配"雪影娃娃"的码。
+      // 有表就反查真名，没表只能沿用识别时的名字。
+      petName: (tables != null && petId != p.petId)
+          ? (tables.petNames[petId] ?? p.name)
+          : p.name,
+      nature: nature,
+      evsList: evs,
       skills: skills,
       bloodline: name,
       bloodlineLetter: letter,

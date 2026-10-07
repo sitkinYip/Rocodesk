@@ -10,6 +10,7 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../core/bloodline_ranks.dart';
+import '../../core/codec_tables.dart';
 import '../../core/icon_assets.dart';
 import '../../core/pipeline.dart';
 import '../../core/skill_matcher.dart';
@@ -18,6 +19,7 @@ import '../../theme/tokens.dart';
 import '../../theme/type_colors.dart';
 import '../../theme/typography.dart';
 import '../../widgets/common.dart';
+import '../../widgets/search_picker.dart';
 
 class ResultView extends StatelessWidget {
   const ResultView({
@@ -41,6 +43,14 @@ class ResultView extends StatelessWidget {
     required this.onSkillsChanged,
     required this.onOverrideBloodline,
     required this.onCopy,
+    // ---- 整队可编辑：这些不给就退回只读展示 ----
+    this.petOverrides = const {},
+    this.natureOverrides = const {},
+    this.evOverrides = const {},
+    this.tables,
+    this.onPetChanged,
+    this.onNatureChanged,
+    this.onEvsChanged,
     // ---- 阵容码区块：两个页面语义不同，所以可配置 ----
     this.codeTitle = '阵容码',
     this.codeSubtitle = '复制后粘进游戏，在好友队伍那一栏导入',
@@ -60,8 +70,28 @@ class ResultView extends StatelessWidget {
   /// 用户手动选定的形态（精灵码），键是「第几只」（从 1 开始）。
   final Map<int, String> variantOverrides;
 
-  /// 用户修正过的技能表，键是「第几只」（从 1 开始）。
+  /// 用户在界面上修正过的技能表，键是「第几只」（从 1 开始）。
   final Map<int, List<String>> skillOverrides;
+
+  /// 用户换掉的精灵（精灵码），键是「第几只」。
+  final Map<int, String> petOverrides;
+
+  /// 用户改过的性格，键是「第几只」。
+  final Map<int, String> natureOverrides;
+
+  /// 用户改过的个体资质（三个维度），键是「第几只」。
+  final Map<int, List<String>> evOverrides;
+
+  /// 数据表。换精灵 / 换性格 / 换技能都需要它提供候选。
+  ///
+  /// 为 null 时**整块编辑能力关闭**（卡片回到只读展示）——
+  /// 这是刻意的降级：宁可少几个能点的东西，也不要一个点了没反应的按钮。
+  final CodecTables? tables;
+
+  /// 用户改了某一项之后回调，交给页面重新出码。
+  final void Function(int index, String petId)? onPetChanged;
+  final void Function(int index, String nature)? onNatureChanged;
+  final void Function(int index, List<String> evs)? onEvsChanged;
 
   /// 取某只精灵**能学**的技能名，供手动填写时提示范围。
   /// 返回空列表表示没有可学数据（此时界面不限制输入）。
@@ -263,10 +293,23 @@ class ResultView extends StatelessWidget {
                   chosenVariant: variantOverrides[i + 1],
                   skillOverride: skillOverrides[i + 1],
                   learnable: learnableSkills(team.pets[i]),
+                  petOverride: petOverrides[i + 1],
+                  natureOverride: natureOverrides[i + 1],
+                  evOverride: evOverrides[i + 1],
+                  tables: tables,
                   onOverride: (letter) =>
                       onOverrideBloodline(i + 1, letter),
                   onChooseVariant: (c) => onChooseVariant(i + 1, c),
                   onSkillsChanged: (list) => onSkillsChanged(i + 1, list),
+                  onPetChanged: onPetChanged == null
+                      ? null
+                      : (id) => onPetChanged!(i + 1, id),
+                  onNatureChanged: onNatureChanged == null
+                      ? null
+                      : (n) => onNatureChanged!(i + 1, n),
+                  onEvsChanged: onEvsChanged == null
+                      ? null
+                      : (e) => onEvsChanged!(i + 1, e),
                   icons: icons,
                   bloodlineRanks: bloodlineRanks,
                 ),
@@ -322,9 +365,16 @@ class _PetRow extends StatelessWidget {
     required this.chosenVariant,
     required this.skillOverride,
     required this.learnable,
+    required this.petOverride,
+    required this.natureOverride,
+    required this.evOverride,
+    required this.tables,
     required this.onOverride,
     required this.onChooseVariant,
     required this.onSkillsChanged,
+    required this.onPetChanged,
+    required this.onNatureChanged,
+    required this.onEvsChanged,
     required this.icons,
     required this.bloodlineRanks,
   });
@@ -337,6 +387,18 @@ class _PetRow extends StatelessWidget {
   /// 用户在界面上修正过的技能表。为空表示用识别结果。
   final List<String>? skillOverride;
 
+  /// 用户换掉的精灵码。为空表示用识别/解析结果。
+  final String? petOverride;
+
+  /// 用户改过的性格。
+  final String? natureOverride;
+
+  /// 用户改过的个体资质（三个维度）。
+  final List<String>? evOverride;
+
+  /// 数据表；为 null 时编辑能力关闭。
+  final CodecTables? tables;
+
   /// 这只精灵**能学**的技能名（用于手动填写的提示范围）。
   /// 由上层从知识库取，避免这里再依赖整张表。
   final List<String> learnable;
@@ -344,6 +406,11 @@ class _PetRow extends StatelessWidget {
   final ValueChanged<String?> onOverride;
   final ValueChanged<String> onChooseVariant;
   final ValueChanged<List<String>> onSkillsChanged;
+
+  /// 换精灵 / 改性格 / 改个体资质的回调。为 null 表示只读。
+  final ValueChanged<String>? onPetChanged;
+  final ValueChanged<String>? onNatureChanged;
+  final ValueChanged<List<String>>? onEvsChanged;
 
   /// 参考图标（血脉 / 技能）。
   final IconAssets icons;
@@ -354,23 +421,49 @@ class _PetRow extends StatelessWidget {
   /// 当前生效的技能表：用户改过就用改过的，否则用识别结果。
   List<String> get skillList => skillOverride ?? pet.skills;
 
+  /// 当前生效的精灵码。
+  String get effectivePetId =>
+      (petOverride != null && petOverride!.isNotEmpty)
+          ? petOverride!
+          : pet.petId;
+
+  /// 当前生效的性格。
+  String get effectiveNature => natureOverride ?? pet.nature;
+
+  /// 当前生效的个体资质。
+  List<String> get effectiveEvs => evOverride ?? pet.evs;
+
+  /// 这只精灵能不能编辑（数据表在且回调给了）。
+  bool get canEditPet => tables != null && onPetChanged != null;
+  bool get canEditNature => tables != null && onNatureChanged != null;
+  bool get canEditEvs => tables != null && onEvsChanged != null;
+
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
     // 用户选过形态就算已解决，哪怕模型没认出来
-    final resolved = pet.resolved || (chosenVariant?.isNotEmpty ?? false);
+    final resolved = pet.resolved ||
+        (chosenVariant?.isNotEmpty ?? false) ||
+        (petOverride?.isNotEmpty ?? false);
     final effectiveBloodline = overrideLetter ?? pet.bloodline;
-    // 头像要跟着"当前生效的精灵码"走：用户选了形态就显示那个形态的头像，
+    // 头像要跟着"当前生效的精灵码"走：用户选了形态或换了精灵就显示那个的头像，
     // 否则认错时头像会和名字不符，反而误导。
-    final effectivePetId = (chosenVariant != null && chosenVariant!.isNotEmpty)
-        ? chosenVariant
-        : pet.petId;
     final chosenName = chosenVariant == null
         ? null
         : pet.variants
             .where((v) => v.code == chosenVariant)
             .map((v) => v.name)
             .firstOrNull;
+    // 名字优先级：换精灵后的新名 > 选形态的名 > 识别/解析出的名
+    final displayName = (petOverride != null && petOverride!.isNotEmpty)
+        ? (tables?.petNames[petOverride] ?? petOverride!)
+        : (chosenName ?? pet.name);
+    // 系别也要跟着换精灵走 —— 换完之后还显示旧精灵的系别是误导
+    final displayTypes = (petOverride != null &&
+            petOverride!.isNotEmpty &&
+            tables != null)
+        ? (tables!.petTypesByCode[petOverride] ?? const <String>[])
+        : pet.types;
 
     /// 把第 slot 个技能换成 newName（空串表示清空该槽）。
     void replaceSkill(int slot, String newName) {
@@ -382,7 +475,14 @@ class _PetRow extends StatelessWidget {
       onSkillsChanged(next);
     }
 
+    /// 选技能。**任何技能都能点** —— 不只是"可疑"的那些。
+    ///
+    /// 用户明确要求"拿到一图流后还可以自己搭配"，所以这里给完整能力：
+    ///   * 有纠错候选时，候选排在最前（OCR 错字场景下最快）
+    ///   * 同时给这只精灵的完整可学列表 + 全表搜索（重新搭配场景）
+    ///   * 以及"清空这个槽"
     Future<void> pickSkill(int slot, String current) async {
+      final t = tables;
       final chosen = await showModalBottomSheet<String>(
         context: context,
         showDragHandle: true,
@@ -392,10 +492,71 @@ class _PetRow extends StatelessWidget {
           suggestions: pet.skillSuggestions[current] ?? const [],
           learnable: learnable,
           icons: icons,
+          // 换技能/重新搭配需要全部 579 个技能，不只是这只精灵能学的
+          allSkills: t == null
+              ? null
+              : (t.skillNames.values.toList()..sort()),
         ),
       );
       if (chosen == null) return;
       replaceSkill(slot, chosen);
+    }
+
+    /// 换精灵：在全部 623 个精灵码里搜。
+    Future<void> pickPet() async {
+      final t = tables;
+      if (t == null) return;
+      final items = <PickerItem>[
+        for (final e in t.petNames.entries)
+          PickerItem(
+            value: e.key,
+            label: e.value,
+            subtitle: (t.petTypesByCode[e.key] ?? const []).join(' · '),
+            iconPath: icons.petIcon(e.key),
+          ),
+      ];
+      final chosen = await showSearchPicker(
+        context,
+        title: '换精灵',
+        subtitle: '第 $index 只。搜索名字即可，共 ${items.length} 只可选',
+        items: items,
+        selected: effectivePetId,
+        searchHint: '搜索精灵名，如「卡瓦重」',
+      );
+      if (chosen != null) onPetChanged?.call(chosen);
+    }
+
+    /// 改性格：30 条。
+    Future<void> pickNature() async {
+      final t = tables;
+      if (t == null) return;
+      final items = <PickerItem>[
+        for (final e in t.natureByName.entries)
+          PickerItem(value: e.key, label: e.key),
+      ]..sort((a, b) => a.label.compareTo(b.label));
+      final chosen = await showSearchPicker(
+        context,
+        title: '选择性格',
+        subtitle: '共 ${items.length} 种',
+        items: items,
+        selected: effectiveNature,
+        searchHint: '搜索性格名',
+      );
+      if (chosen != null) onNatureChanged?.call(chosen);
+    }
+
+    /// 改个体资质：从 6 个维度里选 3 个。
+    ///
+    /// 不限制重复次数 —— 阵容码里存的是三个维度字母，具体合法性由 encode 校验。
+    Future<void> pickEvs() async {
+      final t = tables;
+      if (t == null) return;
+      final chosen = await showEvPicker(
+        context,
+        dims: t.evOrder,
+        current: effectiveEvs,
+      );
+      if (chosen != null) onEvsChanged?.call(chosen);
     }
 
     return Padding(
@@ -421,9 +582,11 @@ class _PetRow extends StatelessWidget {
                 Row(
                   children: [
                     Expanded(
-                      child: Text(
-                        chosenName ?? pet.name,
-                        style: context.texts.titleSmall,
+                      child: _EditableTitle(
+                        text: displayName,
+                        // 换了精灵用不同颜色标出，让用户知道自己动过什么
+                        changed: petOverride != null && petOverride!.isNotEmpty,
+                        onTap: canEditPet ? pickPet : null,
                       ),
                     ),
                     if (!resolved)
@@ -439,12 +602,24 @@ class _PetRow extends StatelessWidget {
                   runSpacing: AppSpacing.xs,
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    if (pet.nature.isNotEmpty)
-                      _Meta(label: '性格', value: pet.nature),
-                    if (pet.evs.isNotEmpty)
-                      _Meta(label: '资质', value: pet.evs.join(' ')),
+                    // 性格与个体资质都可以点开改 ——
+                    // 用户要的是"拿到一图流之后自己搭配"，而不只是修正识别错误
+                    if (effectiveNature.isNotEmpty)
+                      _Meta(
+                        label: '性格',
+                        value: effectiveNature,
+                        changed: natureOverride != null,
+                        onTap: canEditNature ? pickNature : null,
+                      ),
+                    if (effectiveEvs.isNotEmpty)
+                      _Meta(
+                        label: '资质',
+                        value: effectiveEvs.join(' '),
+                        changed: evOverride != null,
+                        onTap: canEditEvs ? pickEvs : null,
+                      ),
                     // 系别：带**属性图标**，比色点信息量大
-                    for (final t in pet.types)
+                    for (final t in displayTypes)
                       SemanticChip(
                         label: t,
                         color: TypeColors.textOf(t, Theme.of(context).brightness),
@@ -456,36 +631,46 @@ class _PetRow extends StatelessWidget {
                       overridden: overrideLetter != null,
                       onChanged: onOverride,
                       icons: icons,
-                      rankedLetters: bloodlineRanks.forPet(pet.name),
+                      rankedLetters: bloodlineRanks.forPet(displayName),
                     ),
                   ],
                 ),
-                if (skillList.isNotEmpty) ...[
-                  const SizedBox(height: AppSpacing.sm),
-                  Wrap(
-                    spacing: AppSpacing.xs,
-                    runSpacing: AppSpacing.xs,
-                    children: [
-                      for (var slot = 0; slot < skillList.length; slot++)
-                        if (skillList[slot].isNotEmpty)
-                          _SkillChip(
-                            name: skillList[slot],
-                            iconPath: icons.skillIcon(skillList[slot]),
-                            // 读不准的（不在技能表里、或有候选）才可点，正常的保持静默
-                            suggestions:
-                                pet.skillSuggestions[skillList[slot]] ?? const [],
-                            suspect: (skillOverride != null &&
-                                    skillList[slot] !=
-                                        (pet.skills.length > slot
-                                            ? pet.skills[slot]
-                                            : '')) ||
-                                pet.skillSuggestions
-                                    .containsKey(skillList[slot]),
-                            onTap: () => pickSkill(slot, skillList[slot]),
-                          ),
-                    ],
-                  ),
-                ],
+                // 技能：**每一个都能点**（不只是"可疑"的）。
+                // 用户要的是"拿到一图流之后自己搭配"，所以正常的技能也要能换。
+                const SizedBox(height: AppSpacing.sm),
+                Wrap(
+                  spacing: AppSpacing.xs,
+                  runSpacing: AppSpacing.xs,
+                  children: [
+                    for (var slot = 0;
+                        slot < (skillList.length > 4 ? skillList.length : 4);
+                        slot++)
+                      if (slot < skillList.length && skillList[slot].isNotEmpty)
+                        _SkillChip(
+                          name: skillList[slot],
+                          iconPath: icons.skillIcon(skillList[slot]),
+                          suggestions:
+                              pet.skillSuggestions[skillList[slot]] ?? const [],
+                          // 「可疑」只用来提示"这个可能是读错了"，
+                          // 不再决定"能不能点" —— 所有技能都能点。
+                          suspect: pet.skillSuggestions
+                              .containsKey(skillList[slot]),
+                          changed: skillOverride != null &&
+                              skillList[slot] !=
+                                  (pet.skills.length > slot
+                                      ? pet.skills[slot]
+                                      : ''),
+                          onTap: () => pickSkill(slot, skillList[slot]),
+                        )
+                      else if (slot >= skillList.length ||
+                          skillList[slot].isEmpty)
+                        // 空槽：给一个明确的"添加"入口。
+                        // 技能数可以少于 4，所以这个入口要一直在。
+                        _AddSkillChip(
+                          onTap: () => pickSkill(slot, ''),
+                        ),
+                  ],
+                ),
                 for (final w in pet.warnings) ...[
                   const SizedBox(height: AppSpacing.sm),
                   Row(
@@ -794,16 +979,22 @@ class _IconChoice extends StatelessWidget {
   }
 }
 
-/// 一个技能标签。
+/// 一个技能标签。**每一个都能点开改**。
 ///
-/// - 正常读出的技能：静态灰底，不可点
-/// - 读不准的（有候选或不在技能表里）：描边高亮 + 可点，点开纠错面板
+/// 三种视觉状态：
+///   * 正常：静态灰底
+///   * 可疑（模型可能读错了）：橙色描边 + 放大镜图标
+///   * 改过：强调色描边，让用户知道自己动过哪些
+///
+/// 曾经只有"可疑"的才能点 —— 那样用户拿到识别结果后**没法自由搭配**，
+/// 只能修正错误。现在点击不再由状态决定。
 class _SkillChip extends StatelessWidget {
   const _SkillChip({
     required this.name,
     required this.iconPath,
     required this.suggestions,
     required this.suspect,
+    required this.changed,
     required this.onTap,
   });
 
@@ -813,54 +1004,161 @@ class _SkillChip extends StatelessWidget {
   final String? iconPath;
 
   final List<SkillSuggestion> suggestions;
+
+  /// 模型可能读错了（有纠错候选）。
   final bool suspect;
+
+  /// 用户改过这一格。
+  final bool changed;
+
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final body = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-      decoration: BoxDecoration(
-        color: suspect ? c.warning.withValues(alpha: 0.10) : c.bgGrouped,
-        borderRadius: AppRadii.pillR,
-        border: suspect
-            ? Border.all(color: c.warning.withValues(alpha: 0.4))
-            : null,
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // 图标在最前：读名字之前先看图，认错时视觉上立刻有反应
-          if (iconPath != null)
-            RefIcon(assetPath: iconPath, size: 18, fallbackText: name),
-          if (suspect) ...[
-            const SizedBox(width: 4),
-            Icon(Icons.spellcheck, size: 11, color: c.warning),
-          ],
-          const SizedBox(width: 5),
-          Text(
-            name,
-            style: TextStyle(
-              fontSize: AppType.sCaption,
-              color: suspect ? c.textPrimary : c.textSecondary,
-              fontWeight: suspect ? FontWeight.w600 : FontWeight.w400,
-            ),
-          ),
-        ],
-      ),
-    );
+    // 改过 > 可疑 > 正常，优先级高的决定配色
+    final Color bg;
+    final Color border;
+    final Color fg;
+    if (changed) {
+      bg = c.accentSubtle;
+      border = c.accent.withValues(alpha: 0.45);
+      fg = c.accent;
+    } else if (suspect) {
+      bg = c.warning.withValues(alpha: 0.10);
+      border = c.warning.withValues(alpha: 0.4);
+      fg = c.textPrimary;
+    } else {
+      bg = c.bgGrouped;
+      border = Colors.transparent;
+      fg = c.textSecondary;
+    }
 
-    if (!suspect) return body;
     return InkWell(
       onTap: onTap,
       borderRadius: AppRadii.pillR,
-      child: body,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: AppRadii.pillR,
+          border: Border.all(color: border),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 图标在最前：读名字之前先看图，认错时视觉上立刻有反应
+            if (iconPath != null)
+              RefIcon(assetPath: iconPath, size: 18, fallbackText: name),
+            if (suspect && !changed) ...[
+              const SizedBox(width: 4),
+              Icon(Icons.spellcheck, size: 11, color: c.warning),
+            ],
+            const SizedBox(width: 5),
+            Text(
+              name,
+              style: TextStyle(
+                fontSize: AppType.sCaption,
+                color: fg,
+                fontWeight: (suspect || changed) ? FontWeight.w600 : null,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
 
-/// 技能纠错面板：候选优先，实在没有就手动填。
+/// 空技能槽的「添加」入口。
+///
+/// 存在的意义：技能可以少于 4 个，所以必须有地方点着加回来 ——
+/// 否则用户删掉一个技能之后就再也加不回去了。
+class _AddSkillChip extends StatelessWidget {
+  const _AddSkillChip({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: AppRadii.pillR,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          borderRadius: AppRadii.pillR,
+          border: Border.all(color: c.separator, style: BorderStyle.solid),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.add, size: 13, color: c.textTertiary),
+            const SizedBox(width: 3),
+            Text(
+              '加技能',
+              style: TextStyle(
+                fontSize: AppType.sCaption,
+                color: c.textTertiary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 可点击的精灵名。
+class _EditableTitle extends StatelessWidget {
+  const _EditableTitle({
+    required this.text,
+    required this.changed,
+    required this.onTap,
+  });
+
+  final String text;
+  final bool changed;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final label = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Flexible(
+          child: Text(
+            text,
+            style: context.texts.titleSmall?.copyWith(
+              color: changed ? c.accent : null,
+            ),
+          ),
+        ),
+        if (onTap != null) ...[
+          const SizedBox(width: 5),
+          Icon(Icons.swap_horiz, size: 15, color: c.textTertiary),
+        ],
+      ],
+    );
+    if (onTap == null) return label;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: AppRadii.thumbR,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: label,
+      ),
+    );
+  }
+}
+
+/// 技能选择面板。
+///
+/// 两个用途共用（这也是同一个面板能同时服务"纠错"和"重新搭配"的原因）：
+///   * **纠错**：模型读错了 -> 顶部给近似候选，点一下就好
+///   * **重新搭配**：用户想换 -> 切到"全部技能"搜索，579 个都能选
 ///
 /// 候选带**图标** —— 图标是 128px 的绘制图，名字是 10px 的扭曲汉字，
 /// 看图比读字靠谱得多。这也是「二轮图标比对」那个思路真正有用的落点：
@@ -871,19 +1169,23 @@ class _SkillFixSheet extends StatefulWidget {
     required this.suggestions,
     required this.learnable,
     required this.icons,
+    this.allSkills,
   });
 
-  /// 模型读到的名字（可能是错的）。
+  /// 当前的技能名（可能是模型读错的）。
   final String readName;
 
   /// 近似候选（已按匹配度排序）。
   final List<SkillSuggestion> suggestions;
 
-  /// 这只精灵能学的全部技能名（用于手动填写的候选池）。
+  /// 这只精灵能学的全部技能名。
   final List<String> learnable;
 
   /// 参考图标（可为空：没有图标资源时功能照常）。
   final IconAssets icons;
+
+  /// 全部技能名（579 个）。为 null 时不给"全部技能"这个范围。
+  final List<String>? allSkills;
 
   @override
   State<_SkillFixSheet> createState() => _SkillFixSheetState();
@@ -894,6 +1196,27 @@ class _SkillFixSheetState extends State<_SkillFixSheet> {
       TextEditingController(text: widget.readName);
   String _filter = '';
 
+  /// false = 只列这只精灵能学的；true = 全部 579 个。
+  bool _allScope = false;
+
+  /// 当前的候选源。
+  List<String> get _source => (_allScope && widget.allSkills != null)
+      ? widget.allSkills!
+      : widget.learnable;
+
+  /// 过滤后的候选（截前 24 个 —— 再多的用搜索）。
+  List<String> get _pool {
+    final f = _filter;
+    if (f.isEmpty) return _source.take(24).toList();
+    final hits = _source.where((s) => s.contains(f)).toList();
+    hits.sort((a, b) => a.indexOf(f).compareTo(b.indexOf(f)));
+    return hits.take(24).toList();
+  }
+
+  /// 匹配总数（不只是显示出来的 24 个），让用户知道"还有更多"。
+  int get _matchCount =>
+      _filter.isEmpty ? _source.length : _source.where((s) => s.contains(_filter)).length;
+
   @override
   void dispose() {
     _c.dispose();
@@ -903,10 +1226,8 @@ class _SkillFixSheetState extends State<_SkillFixSheet> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    // 手动填写时的候选池：按输入过滤这只精灵能学的技能
-    final pool = _filter.isEmpty
-        ? widget.learnable.take(12).toList()
-        : widget.learnable.where((s) => s.contains(_filter)).take(12).toList();
+    // 候选池由 _pool 计算（支持"它能学的 / 全部技能"两种范围）
+    final pool = _pool;
 
     return Padding(
       padding: EdgeInsets.only(
@@ -968,6 +1289,28 @@ class _SkillFixSheetState extends State<_SkillFixSheet> {
               const SizedBox(height: AppSpacing.lg),
             ],
 
+            const SizedBox(height: AppSpacing.lg),
+            // 范围切换：默认只列"它能学的"，需要自由搭配时切到全表。
+            //
+            // 为什么默认限定范围：纠错场景下 46 个候选比 579 个快得多。
+            // 为什么要能切到全表：用户可能就想配一个它学不了的技能
+            // （游戏允许，阵容码也存得下），不能因为"不在可学列表"就挡住。
+            if (widget.allSkills != null)
+              SegmentedButton<bool>(
+                segments: const [
+                  ButtonSegment(value: false, label: Text('它能学的')),
+                  ButtonSegment(value: true, label: Text('全部技能')),
+                ],
+                selected: {_allScope},
+                showSelectedIcon: false,
+                style: const ButtonStyle(
+                  visualDensity: VisualDensity.compact,
+                ),
+                onSelectionChanged: (s) =>
+                    setState(() => _allScope = s.first),
+              ),
+            const SizedBox(height: AppSpacing.md),
+
             Text(
               '手动填写',
               style: TextStyle(
@@ -994,8 +1337,13 @@ class _SkillFixSheetState extends State<_SkillFixSheet> {
             if (pool.isNotEmpty) ...[
               const SizedBox(height: AppSpacing.md),
               Text(
-                _filter.isEmpty ? '它能学的技能（前 12 个）' : '匹配的技能',
-                style: TextStyle(fontSize: AppType.sCaption, color: c.textTertiary),
+                _filter.isEmpty
+                    ? (_allScope
+                        ? '全部技能（前 24 个，建议用上面的搜索框）'
+                        : '它能学的技能（前 24 个）')
+                    : '匹配「$_filter」的 $_matchCount 个，显示前 24 个',
+                style:
+                    TextStyle(fontSize: AppType.sCaption, color: c.textTertiary),
               ),
               const SizedBox(height: AppSpacing.sm),
               Wrap(
@@ -1105,16 +1453,28 @@ class _VariantChip extends StatelessWidget {
   }
 }
 
-/// 一个"标签 + 值"的小单元。
+/// 一个"标签 + 值"的小单元。[onTap] 不为 null 时可点开修改。
 class _Meta extends StatelessWidget {
-  const _Meta({required this.label, required this.value});
+  const _Meta({
+    required this.label,
+    required this.value,
+    this.onTap,
+    this.changed = false,
+  });
+
   final String label;
   final String value;
+
+  /// 点开修改。为 null 时只读。
+  final VoidCallback? onTap;
+
+  /// 用户改动过。用强调色标出，让用户知道自己动过什么。
+  final bool changed;
 
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    return Row(
+    final row = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
@@ -1130,10 +1490,150 @@ class _Meta extends StatelessWidget {
           style: TextStyle(
             fontSize: AppType.sCaption,
             fontWeight: FontWeight.w600,
-            color: c.textPrimary,
+            color: changed ? c.accent : c.textPrimary,
           ),
         ),
+        if (onTap != null) ...[
+          const SizedBox(width: 3),
+          Icon(Icons.edit_outlined, size: 11, color: c.textTertiary),
+        ],
       ],
+    );
+    if (onTap == null) return row;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: AppRadii.thumbR,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: row,
+      ),
+    );
+  }
+}
+
+/// 个体资质选择器：从 6 个维度里选 3 个。
+///
+/// 为什么不用可搜索列表：只有 6 个选项，静态网格更快。
+/// 用「顺序敏感」的三个槽而不是三个下拉 —— 阵容码里三个维度的顺序是有意义的
+/// （首项/次项/第三项的统计分布不同），顺序错了码就不同。
+Future<List<String>?> showEvPicker(
+  BuildContext context, {
+  required List<String> dims,
+  required List<String> current,
+}) {
+  return showModalBottomSheet<List<String>>(
+    context: context,
+    showDragHandle: true,
+    isScrollControlled: true,
+    builder: (_) => _EvPickerSheet(dims: dims, current: current),
+  );
+}
+
+class _EvPickerSheet extends StatefulWidget {
+  const _EvPickerSheet({required this.dims, required this.current});
+
+  final List<String> dims;
+  final List<String> current;
+
+  @override
+  State<_EvPickerSheet> createState() => _EvPickerSheetState();
+}
+
+class _EvPickerSheetState extends State<_EvPickerSheet> {
+  late final List<String?> _picked = [
+    for (var i = 0; i < 3; i++)
+      i < widget.current.length ? widget.current[i] : null,
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Padding(
+      padding: EdgeInsets.only(
+        left: AppSpacing.lg,
+        right: AppSpacing.lg,
+        bottom: MediaQuery.viewInsetsOf(context).bottom + AppSpacing.lg,
+      ),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * 0.7,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('选择个体资质',
+                  style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: AppSpacing.xs),
+              Text(
+                '三项，顺序有意义（顺序不同阵容码也不同）',
+                style: TextStyle(
+                  fontSize: AppType.sCaption,
+                  color: c.textSecondary,
+                ),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+
+              for (var slot = 0; slot < 3; slot++) ...[
+                Text(
+                  switch (slot) { 0 => '第一项', 1 => '第二项', _ => '第三项' },
+                  style: TextStyle(
+                    fontSize: AppType.sCaption,
+                    fontWeight: FontWeight.w600,
+                    color: c.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.xs),
+                Wrap(
+                  spacing: AppSpacing.xs,
+                  runSpacing: AppSpacing.xs,
+                  children: [
+                    for (final d in widget.dims)
+                      ChoiceChip(
+                        label: Text(d),
+                        selected: _picked[slot] == d,
+                        onSelected: (_) => setState(() {
+                          // 点已选中的就取消这一项（允许少于 3 个）
+                          _picked[slot] = _picked[slot] == d ? null : d;
+                        }),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.lg),
+              ],
+
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('取消'),
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () {
+                        final out = _picked.whereType<String>().toList();
+                        // 三项必须齐 —— 阵容码里就是三个字母
+                        if (out.length != 3) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('三项都要选')),
+                          );
+                          return;
+                        }
+                        Navigator.pop(context, out);
+                      },
+                      child: const Text('确定'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

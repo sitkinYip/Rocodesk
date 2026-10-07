@@ -76,6 +76,11 @@ class _ParsePageState extends State<ParsePage> {
   /// 手改过的技能，键是「第几只」。
   final Map<int, List<String>> _skillOverrides = {};
 
+  /// 手改过的精灵 / 性格 / 个体资质，键是「第几只」。
+  final Map<int, String> _petOverrides = {};
+  final Map<int, String> _natureOverrides = {};
+  final Map<int, List<String>> _evOverrides = {};
+
   @override
   void initState() {
     super.initState();
@@ -161,6 +166,10 @@ class _ParsePageState extends State<ParsePage> {
         skillOverrides: _skillOverrides,
         magicOverride: _magicOverride,
         teamNameOverride: _teamNameOverride,
+        petOverrides: _petOverrides,
+        natureOverrides: _natureOverrides,
+        evOverrides: _evOverrides,
+        tables: _tables,
       );
       return (codec.encode(team), '', codec.toGameText(team));
     } on TeamCodeException catch (e) {
@@ -341,6 +350,16 @@ class _ParsePageState extends State<ParsePage> {
                 codeSubtitle: '改了上面的内容，这串码会跟着更新',
                 onCopyCode: _copy,
                 onPrimaryAction: null,
+                // ---- 整队可编辑 ----
+                // 解析页同样全开放：拿到一串码之后也能自己重新搭配
+                tables: _tables,
+                petOverrides: _petOverrides,
+                natureOverrides: _natureOverrides,
+                evOverrides: _evOverrides,
+                onPetChanged: (i, id) => setState(() => _petOverrides[i] = id),
+                onNatureChanged: (i, n) =>
+                    setState(() => _natureOverrides[i] = n),
+                onEvsChanged: (i, e) => setState(() => _evOverrides[i] = e),
               );
             }),
           ],
