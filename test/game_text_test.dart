@@ -50,11 +50,12 @@ void main() {
         ],
       );
 
-  group('给 AI 助手的描述', () {
-    test('开头是任务指令，不是数据堆砌', () {
+  group('给 AI 助手的描述（超浓缩版）', () {
+    test('开头点明用途 + 魔法，不写解释性文字', () {
       final text = codec.toGameText(realTeam());
-      expect(text.startsWith('按以下要求组一支队伍'), isTrue,
-          reason: '没有指令时助手容易只回一句"好的，收到了"');
+      expect(text.startsWith('配队 '), isTrue,
+          reason: '要有一个引导词，否则助手容易只回一句"好的，收到了"');
+      expect(text, contains('魔法=进化之力'));
     });
 
     test('**不含阵容码**', () {
@@ -82,26 +83,54 @@ void main() {
       expect(text.contains('#'), isFalse, reason: '不该有任何 # 前缀行');
     });
 
-    test('包含助手真正需要的信息：魔法 / 精灵 / 性格 / 资质 / 技能 / 血脉', () {
+    test('保留配队需要的要素：魔法 / 精灵 / 性格 / 技能 / 血脉', () {
       final text = codec.toGameText(realTeam());
       expect(text, contains('进化之力'));
       expect(text, contains('雪影娃娃'));
       expect(text, contains('固执'));
-      expect(text, contains('物攻'));
-      expect(text, contains('生命'));
       expect(text, contains('暴风雪'));
       expect(text, contains('超级糖果'));
       expect(text, contains('首领'));
     });
 
-    test('每只精灵一行，便于阅读', () {
+    test('**砍掉个体资质** —— 用户明确不要，它不影响配队', () {
       final text = codec.toGameText(realTeam());
-      final petLines = text.split('\n').where((l) => l.startsWith('- '));
-      expect(petLines.length, 1);
-      expect(petLines.first, startsWith('- 雪影娃娃：'));
+      expect(text.contains('资质'), isFalse);
+      // 六维的具体取值也不该出现（它们只从资质来）
+      for (final dim in const ['物攻', '魔攻', '物防', '魔防', '生命', '速度']) {
+        expect(text.contains(dim), isFalse, reason: '$dim 来自个体资质，应当砍掉');
+      }
     });
 
-    test('无血脉时写「无血脉」，不写成首领（历史 bug）', () {
+    test('没有字段标签、没有换行冗余、没有括号分隔符', () {
+      final text = codec.toGameText(realTeam());
+      for (final noise in const ['性格', '血脉', '技能', '个体', '：', '；', '{', '}', '、', '- ']) {
+        expect(text.contains(noise), isFalse,
+            reason: '「$noise」是纯装饰，占额度但没有信息量');
+      }
+      // 不能有空行（空行也是要发的字符）
+      expect(text.contains('\n\n'), isFalse);
+    });
+
+    test('每只精灵一行，顺序是 名字 性格 血脉 技能', () {
+      final text = codec.toGameText(realTeam());
+      final lines = text.split('\n');
+      expect(lines.length, 2, reason: '1 行表头 + 1 只精灵');
+      // 夹具里这只就是 4 个技能 —— 别凭印象写，会漏
+      expect(lines[1].split(' '),
+          ['雪影娃娃', '固执', '首领', '暴风雪', '冰墙', '冬至', '超级糖果']);
+    });
+
+    test('**整份文本足够短** —— 这才是这个格式存在的理由', () {
+      // 用户实测完整版（333 字 / 11 行）超过了官方助手的输入限制。
+      // 这里盯住上限，防止以后有人"为了可读性"把标签加回来。
+      final text = codec.toGameText(realTeam());
+      expect(text.length, lessThanOrEqualTo(60),
+          reason: '单只精灵的描述要压在 60 字以内，实际 ${text.length} 字');
+      expect(text.length, greaterThan(10), reason: '别压到没信息了');
+    });
+
+    test('无血脉时整段省掉，不写占位符（历史 bug：兜底成「首领」）', () {
       final team = Team(
         name: 'x',
         magic: '进化之力',
@@ -119,9 +148,14 @@ void main() {
         ],
       );
       final text = codec.toGameText(team);
-      expect(text, contains('血脉 无血脉'),
-          reason: '空血脉被兜底成"首领"是实际发生过的 bug');
+      // 空血脉整段省掉（不再写「无血脉」占位）——
+      // 空血脉被兜底成"首领"是实际发生过的 bug，所以仍然要断言它没出现
       expect(text.contains('首领'), isFalse);
+      expect(text.contains('无血脉'), isFalse,
+          reason: '省掉比写占位符更省额度');
+      final line = text.split('\n')[1];
+      expect(line.split(' '), ['雪影娃娃', '固执', '冰墙'],
+          reason: '顺序：名字 性格 血脉(空则跳过) 技能');
     });
 
     test('六只精灵全部出现且顺序不变', () {
@@ -170,6 +204,10 @@ void main() {
       expect(text.contains('{}'), isFalse);
       expect(text.contains('技能'), isFalse,
           reason: '没有技能时不写技能段');
+      // 只剩「名字 性格」两段，不能拖尾空格
+      final line = text.split('\n')[1];
+      expect(line, '雪影娃娃 固执');
+      expect(line.endsWith(' '), isFalse);
     });
 
     test('队伍名改了也不影响导出文本', () {

@@ -322,9 +322,11 @@ class ResultView extends StatelessWidget {
 
         // ---------- 助手描述 ----------
         if (aiText.isNotEmpty) ...[
-          const SectionHeader(
+          SectionHeader(
             title: '给官方助手的描述',
-            subtitle: '粘贴给游戏里的 AI 助手，它会结合性格与资质给建议',
+            // 说明里带上字数：用户实测过完整版会超官方助手的输入限制，
+            // 所以这里刻意做成超浓缩，写出来用户才知道为什么这么"干"
+            subtitle: '粘贴给游戏里的 AI 助手 · 已压到 ${aiText.length} 字',
           ),
           AppGroup(
             child: Column(

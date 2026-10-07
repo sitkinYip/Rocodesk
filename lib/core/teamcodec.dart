@@ -584,40 +584,47 @@ class TeamCodec {
 
   // ------------------------------------------------------- AI 助手文本
 
-  /// 生成给官方 AI 助手用的文本。
+  /// 生成给官方 AI 助手用的文本 —— **超浓缩版**。
   ///
-  /// ## 与小程序 `exportToGame` 的**刻意差异**
+  /// ## 为什么砍到这么狠
   ///
-  /// 小程序把队伍名当标题、末尾附上阵容码。这里两条都不要：
+  /// 用户实测：完整版（333 字 / 11 行）**超过了官方助手的输入字数限制**。
+  /// 官方那个模型是专门为配队调过的，理解力很强，但它要的是**要素**，
+  /// 不是自然语言散文 —— 所以每一段解释性文字都是在浪费额度。
   ///
-  ///   * **不含阵容码** —— 官方助手是用来"讨论怎么配队"的，
-  ///     把码塞给它既没用（它不导入码），又会干扰它理解意图。
-  ///     码在 App 里单独展示，用户自己复制。
-  ///   * **不含队伍名** —— 名字是玩家自己起的（「队伍3」之类），
-  ///     对助手理解阵容没有任何信息量。
+  /// 砍掉的（都是"读起来舒服"但对配队无用的）：
+  ///   * `个体资质` —— 用户明确说不要。它只影响数值分配，不影响配队判断
+  ///   * `性格`/`血脉`/`技能` 这些**字段名** —— 位置固定，不需要标签
+  ///   * 所有换行与空行 —— 11 行压到 7 行
+  ///   * 花括号、分号、顿号 —— 空白分隔就够
+  ///   * 「无血脉」三个字 —— 省掉，缺省就是没有
   ///
-  /// 开头明确给出**任务指令**（"按以下要求组一支队伍"），
-  /// 而不是只丢一堆数据 —— 否则助手容易回一句"好的，收到了"。
+  /// 保留的（配队真正依赖的）：
+  ///   * 精灵名、性格、血脉、技能
+  ///   * 魔法（影响全队）
+  ///
+  /// 仍然**不含阵容码**（助手不导入码，塞进去只占额度）与**队伍名**
+  /// （玩家自己起的，对配队零信息量）。
+  ///
+  /// 格式（每只一行，空格分隔，顺序固定：名字 性格 血脉 技能）：
+  ///
+  /// ```
+  /// 配队 魔法=进化之力
+  /// 卡瓦重（雪山附近的样子） 胆小 冰 晒太阳 筛管奔流 冰雹
+  /// 迪莫 莽撞 武 过曝 寒风吹 热砂 棘突
+  /// ```
   String toGameText(Team team) {
     final magic = team.magic.isNotEmpty ? team.magic : t.defaultMagicName;
-    final b = StringBuffer()
-      ..writeln('按以下要求组一支队伍：')
-      ..writeln()
-      ..writeln('魔法：$magic')
-      ..writeln()
-      ..writeln('精灵与配置：');
+    final b = StringBuffer()..writeln('配队 魔法=$magic');
     for (final pet in team.pets) {
-      // 没有血脉时写「无血脉」而不是默认文案「默认血脉」——
-      // 后者会让人以为有某种叫"默认"的血脉，前者才符合界面上的说法。
-      final bl = pet.bloodline.isNotEmpty ? pet.bloodline : '无血脉';
-      final parts = <String>[];
-      if (pet.nature.isNotEmpty) parts.add('性格 ${pet.nature}');
-      if (pet.evsList.isNotEmpty) parts.add('个体资质 ${pet.evsList.join('、')}');
-      parts.add('血脉 $bl');
-      if (pet.skills.where((s) => s.isNotEmpty).isNotEmpty) {
-        parts.add('技能 {${pet.skills.where((s) => s.isNotEmpty).join('、')}}');
-      }
-      b.writeln('- ${pet.petName}：${parts.join('；')}');
+      // 顺序固定：名字 / 性格 / 血脉 / 技能。
+      // 中间任何一段为空就跳过 —— 但位置关系不变，助手能从顺序推断含义。
+      final bits = <String>[pet.petName];
+      if (pet.nature.isNotEmpty) bits.add(pet.nature);
+      // 没有血脉时整个省掉，不写占位符（省 2~3 个字 × 6 只）
+      if (pet.bloodline.isNotEmpty) bits.add(pet.bloodline);
+      bits.addAll(pet.skills.where((s) => s.isNotEmpty));
+      b.writeln(bits.join(' '));
     }
     return b.toString().trimRight();
   }
