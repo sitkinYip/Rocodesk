@@ -41,7 +41,12 @@ class ResultView extends StatelessWidget {
     required this.onSkillsChanged,
     required this.onOverrideBloodline,
     required this.onCopy,
-    required this.onReanalyze,
+    // ---- 阵容码区块：两个页面语义不同，所以可配置 ----
+    this.codeTitle = '阵容码',
+    this.codeSubtitle = '复制后粘进游戏，在好友队伍那一栏导入',
+    this.primaryActionLabel = '重新识别',
+    this.onPrimaryAction,
+    this.onCopyCode,
   });
 
   final RecognizedTeam team;
@@ -79,12 +84,32 @@ class ResultView extends StatelessWidget {
   /// 血脉候选的本地排序（每张图生成）。空则按字母序。
   final BloodlineRanks bloodlineRanks;
 
+  // ---- 阵容码区块的可配置项 ----
+  //
+  // 这些不是"样式开关"，而是**两个页面语义不同**的落点：
+  // 识别页的码是产出，解析页的码是输入。
+
+  /// 阵容码区块的标题。
+  final String codeTitle;
+
+  /// 阵容码区块的说明。
+  final String codeSubtitle;
+
+  /// 主按钮的文案（识别页是「重新识别」，解析页不用）。
+  final String primaryActionLabel;
+
+  /// 主按钮的回调。为 null 表示这个页面不需要主按钮。
+  final VoidCallback? onPrimaryAction;
+
+  /// 「复制阵容码」按钮的回调。为 null 表示不显示这个按钮 ——
+  /// 解析页属于这种情况：用户刚刚才把码粘进来，再给他一个复制按钮是多余的。
+  final Future<void> Function(String text, String label)? onCopyCode;
+
   final ValueChanged<String?> onChooseMagic;
   final void Function(int index, String code) onChooseVariant;
   final void Function(int index, List<String> skills) onSkillsChanged;
   final void Function(int index, String? letter) onOverrideBloodline;
   final Future<void> Function(String text, String label) onCopy;
-  final VoidCallback onReanalyze;
 
   /// 编辑队伍名。
   ///
@@ -172,9 +197,15 @@ class ResultView extends StatelessWidget {
         ],
 
         // ---------- 阵容码 ----------
-        const SectionHeader(
-          title: '阵容码',
-          subtitle: '复制后粘进游戏，在好友队伍那一栏导入',
+        //
+        // 两个页面对这块的处理不同，所以标题与动作都可配置：
+        //   * 识别页：码是**产出**，重点是"复制走" + "识别错了重来"
+        //   * 解析页：码是**输入**，用户刚粘过一串；这里显示的是改过之后的结果，
+        //     作用只是"确认改动生效了"。所以既不需要复制按钮（他本来就有码），
+        //     也不该有"重新识别"（解析页没有识别这一步）。
+        SectionHeader(
+          title: codeTitle,
+          subtitle: codeSubtitle,
         ),
         AppGroup(
           child: Column(
@@ -185,18 +216,24 @@ class ResultView extends StatelessWidget {
                 const SizedBox(height: AppSpacing.lg),
                 Row(
                   children: [
-                    Expanded(
-                      child: FilledButton.icon(
-                        onPressed: () => onCopy(code, '阵容码'),
-                        icon: const Icon(Icons.copy_rounded, size: 18),
-                        label: const Text('复制阵容码'),
+                    if (onCopyCode != null)
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed: () => onCopy(code, '阵容码'),
+                          icon: const Icon(Icons.copy_rounded, size: 18),
+                          label: const Text('复制阵容码'),
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: AppSpacing.sm),
-                    OutlinedButton(
-                      onPressed: onReanalyze,
-                      child: const Text('重新识别'),
-                    ),
+                    if (onCopyCode != null && onPrimaryAction != null)
+                      const SizedBox(width: AppSpacing.sm),
+                    if (onPrimaryAction != null)
+                      Expanded(
+                        flex: onCopyCode == null ? 1 : 0,
+                        child: OutlinedButton(
+                          onPressed: onPrimaryAction,
+                          child: Text(primaryActionLabel),
+                        ),
+                      ),
                   ],
                 ),
               ] else

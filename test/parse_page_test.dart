@@ -154,4 +154,41 @@ void main() {
     expect(find.text('首领血脉'), findsWidgets,
         reason: '改完血脉后标签应当变成「首领血脉」');
   });
+
+  group('解析页不该出现识别页专属的东西', () {
+    // 结果页是两个页面共用的，这几个动作只在识别路径下讲得通。
+    // 曾经因为"直接复用"而出现在解析页 —— 用户当场指出这是画蛇添足。
+
+    Future<void> parseRealCode(WidgetTester tester) async {
+      await _pump(tester);
+      await tester.enterText(find.byType(TextField).first, kRealCode);
+      await tester.pump();
+      await tester.tap(find.widgetWithText(FilledButton, '解析'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('没有「重新识别」按钮 —— 解析页没有识别这一步', (tester) async {
+      await parseRealCode(tester);
+      expect(find.text('重新识别'), findsNothing);
+    });
+
+    testWidgets('没有「复制阵容码」按钮 —— 码是刚粘进来的，不该再给一个复制按钮',
+        (tester) async {
+      await parseRealCode(tester);
+      expect(find.text('复制阵容码'), findsNothing);
+    });
+
+    testWidgets('阵容码区块的措辞是「修改后的阵容码」，不是「阵容码」', (tester) async {
+      await parseRealCode(tester);
+      expect(find.text('修改后的阵容码'), findsOneWidget);
+      expect(find.text('阵容码'), findsNothing,
+          reason: '标题应当说明这是改过之后的结果');
+    });
+
+    testWidgets('但仍然显示码本身 —— 让用户确认改动生效了', (tester) async {
+      await parseRealCode(tester);
+      // 原样的码（没做任何改动）应当仍然可见
+      expect(find.textContaining('ZZH'), findsWidgets);
+    });
+  });
 }

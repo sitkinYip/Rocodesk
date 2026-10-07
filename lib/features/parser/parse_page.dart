@@ -332,7 +332,14 @@ class _ParsePageState extends State<ParsePage> {
                   }
                 }),
                 onCopy: _copy,
-                onReanalyze: _parse,
+                // 解析页：码是**输入**，用户刚粘过一串。
+                // 这里显示的是改动之后的结果，作用只是"确认改动生效了"：
+                //   * 不给「复制阵容码」—— 他本来就有码，再给一个按钮是多余的
+                //   * 不给「重新识别」—— 这个页面没有识别这一步
+                codeTitle: '修改后的阵容码',
+                codeSubtitle: '改了上面的内容，这串码会跟着更新',
+                onCopyCode: null,
+                onPrimaryAction: null,
               );
             }),
           ],

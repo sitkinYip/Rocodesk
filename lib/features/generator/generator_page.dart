@@ -527,7 +527,9 @@ class _GeneratorPageState extends State<GeneratorPage> {
               _reencode();
             },
             onCopy: _copy,
-            onReanalyze: _analyze,
+            // 识别页：码是产出，所以给「复制走」和「识别错了重来」两个动作
+            onCopyCode: _copy,
+            onPrimaryAction: _analyze,
           ),
         ],
         ],
