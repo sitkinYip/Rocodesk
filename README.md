@@ -110,7 +110,7 @@ test/                    209 条，覆盖编解码等价性、纠错、血脉联
 tool/                    开发期小工具（不在发布产物里）
 assets/
   data/                  编解码器数据表
-  icons/                 界面图标 1402 张（技能 579 / 精灵 542 / 特性 242 / 属性 18 / 血脉 21）
+  icons/                 界面图标 1453 张（技能 579 / 精灵 593 / 特性 242 / 属性 18 / 血脉 21）
   golden/                编解码等价性测试夹具（**不打包进应用**）
 ```
 
@@ -169,6 +169,42 @@ traits.json.by_name         特性名 -> {name, desc, icon}
 
 > 补齐脚本：`python tools/fetch_trait_icons.py`
 
+### 精灵头像：官方图鉴缺 81 个，已从 WIKI 补 51 个
+
+阵容码表（teamcode 的 `PETS`）有 623 只，但官方图鉴 `d.json` 只有 621 条，
+而且**有 81 个码的全名在 d.json 里根本不存在**
+（海盔虫 / 刺盔虫 / 千棘盔 / 波波螺 / 雪绒鸟 …），所以既没有知识库 id
+也没有 `image_url`，导出脚本自然拿不到图。
+
+和技能图标同一类问题、同一套解法：**biligame WIKI 有**。
+精灵页的 `og:image` 就是形象图（`og:image:alt` = "海盔虫形象"）。
+
+```
+542（知识库有图）+ 51（WIKI 补）= 593
+仍缺 30 个：云梦豚 / 长江豚 / 棋契陛下 / 钻石蜗 / 鸭吉吉国王 /
+            蹦蹦果 / 暮风隐者 / 满月砣 —— 连 WIKI 都没有页面（未实装/新形态）
+```
+
+> 补齐脚本：`python tools/fetch_missing_pet_icons.py`
+> 缺口核对：`python tools/analyze_missing_pet_icons.py`
+
+#### 这里的文件名规则**和别处不同**，改动前务必看清楚
+
+WIKI 补的图放在 `data/icons2/pet_wiki/`，导出脚本按
+`data/icons2/pet_wiki_index.json`（阵容码 -> 文件名）取，**不反解文件名**。
+
+原因是文件名踩了三轮大小写冲突，每次都是静默覆盖：
+
+| 做法 | 结果 |
+|---|---|
+| 直接用阵容码 | `21` 既是某只的**阵容码**、又是另一只的**知识库 id** → 撞 |
+| 加 `w` 前缀 | `wBOj` 与 `wBOJ` 忽略大小写后相同，而 `BOj`/`BOJ` 是两只精灵 → 撞 |
+| `u`/`l` 编码大小写 | 解决了源目录内部的覆盖 |
+| 导出时 `w`+sha1 前 8 位 | 最终方案，稳定且必不冲突 |
+
+这三轮**全部是被枚举自检抓出来的**，不是我看出来的 —— 所以那两个断言
+（`written_files` 冲突检查 + "期望文件名集合 vs 目录实际枚举"）不要删。
+
 ### 关于 `assets/golden/`（2.73 MB）
 这是 593 条真实阵容码的逐字段快照，`codec_golden_test.dart` 用它做编解码等价性验证。
 仓库里带了它，所以 **clone 下来不用先生成就能跑完整测试**。
@@ -198,6 +234,7 @@ traits.json.by_name         特性名 -> {name, desc, icon}
 python tools/export_data_for_app.py          # 数据表（含 pets/traits）
 python tools/fetch_skill_icons.py            # 官方图鉴的图标素材
 python tools/fetch_missing_skill_icons.py    # 官方缺的 92 个技能图 -> biligame WIKI
+python tools/fetch_missing_pet_icons.py      # 官方缺的 81 个头像 -> 补到 51 个
 python tools/fetch_trait_icons.py            # 特性图标（官方 175 + WIKI 67）
 python tools/export_app_icons.py             # 生成界面图标
 python tools/make_golden_fixture.py          # 等价性测试夹具

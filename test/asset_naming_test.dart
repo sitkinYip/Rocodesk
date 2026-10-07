@@ -93,9 +93,10 @@ void main() {
 
     test('索引里每个精灵头像的文件都真实存在', () {
       final pet = index['pet'] as Map<String, dynamic>;
-      // 542 只：阵容码共 623 个，其中 81 个（多为活动/未收录形态）
-      // 在知识库里按全名 join 不上，所以没有头像。
-      expect(pet.length, 542, reason: '实测 542 只精灵码能对上头像');
+      // 593 = 542（知识库有图）+ 51（官方图鉴没有、从 biligame WIKI 补的）。
+      // 阵容码共 623 个，剩下 30 个连 WIKI 都没有页面（未实装/新形态）。
+      expect(pet.length, 593,
+          reason: '实测 593 只精灵码能对上头像（542 知识库 + 51 WIKI）');
 
       final missing = <String>[];
       for (final entry in pet.entries) {
@@ -104,7 +105,7 @@ void main() {
       expect(missing, isEmpty, reason: '缺头像：${missing.take(5)}');
     });
 
-    test('精灵头像的键是**阵容码**，文件名是数字 id（避开大小写冲突）', () {
+    test('精灵头像的键是**阵容码**，文件名要有 ASCII 名且忽略大小写唯一', () {
       final pet = index['pet'] as Map<String, dynamic>;
       // 两套编号体系不同，搞混了界面就全是占位图
       expect(pet.containsKey('vi'), isTrue, reason: 'vi 是卡瓦重草地形态的阵容码');
@@ -112,15 +113,21 @@ void main() {
       expect(pet.containsKey('108'), isFalse,
           reason: '108 是知识库 id，不是阵容码，不该做索引的键');
 
-      // 但**文件名**必须是数字 id：阵容码区分大小写（0f vs 0F 是两只不同的
+      // **文件名不能直接用阵容码**：阵容码区分大小写（0f vs 0F 是两只不同的
       // 精灵），而 Windows 文件名不区分 —— 直接用码命名会互相覆盖，
       // 实测 542 个文件只能枚举出 385 个，且 Flutter 打包靠遍历目录，
       // 那 157 个会静默丢失。
+      //
+      // 现在有两个来源，命名规则**故意不同**（下面的忽略大小写唯一性才是硬约束）：
+      //   知识库来源 -> 纯数字 id（保持历史文件名不变）
+      //   WIKI 来源  -> `w` + 阵容码 sha1 前 8 位
+      // WIKI 来源为什么不用码：`wBOj` 与 `wBOJ` 忽略大小写后相同，
+      // 而 BOj / BOJ 是两只不同的精灵（这个冲突是被枚举自检抓出来的）。
       for (final entry in pet.entries) {
         final file = (entry.value as String).split('/').last;
-        expect(RegExp(r'^\d+\.png$').hasMatch(file), isTrue,
-            reason: '${entry.key} 的文件名 "$file" 不是纯数字 id —— '
-                '大小写不同的阵容码会指向同一个文件');
+        expect(RegExp(r'^(w[0-9a-f]{8}|\d+)\.png$').hasMatch(file), isTrue,
+            reason: '${entry.key} 的文件名 "$file" 不是「纯数字 id」'
+                '或「w+8位哈希」—— 大小写不同的阵容码会指向同一个文件');
       }
     });
 
