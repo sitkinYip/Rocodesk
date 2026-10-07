@@ -470,30 +470,14 @@ class _PetRow extends StatelessWidget {
   }
 
   /// 界面上的血脉名/字母 -> 阵容码字母。
-  String? _bloodlineLetterOf(String nameOrLetter) {
-    // ⚠️ 这里**不能**用 `length == 1` 判断"已经是字母"。
-    //
-    // 中文系别名也是单字符（「冰」「火」「龙」…），会被误判成字母直接返回，
-    // 于是 `bloodline['冰']` 查不到 -> 类型为 null -> "血脉锁定"整块失效。
-    // 我这么错过一次，症状是"被锁的技能没有标记"，但功能看着还在。
-    if (nameOrLetter.length == 1 &&
-        nameOrLetter.codeUnitAt(0) < 128 &&
-        RegExp(r'[A-Za-z]').hasMatch(nameOrLetter)) {
-      return nameOrLetter.toUpperCase();
-    }
-
-    const known = {
-      '普通': 'B', '草': 'C', '火': 'D', '水': 'E', '光': 'F', '地': 'G',
-      '冰': 'H', '龙': 'I', '电': 'J', '毒': 'K', '虫': 'L', '武': 'M',
-      '翼': 'N', '萌': 'O', '幽': 'P', '恶': 'Q', '机械': 'R', '幻': 'S',
-      '首领': 'T', '巨兽': 'U', '黑魔法': 'V', '异核': 'W', '污染': 'X',
-      '奇异': 'Y',
-    };
-    final n = nameOrLetter.endsWith('血脉')
-        ? nameOrLetter.substring(0, nameOrLetter.length - 2)
-        : nameOrLetter;
-    return known[n];
-  }
+  ///
+  /// ⚠️ 这里**曾经写死一张 24 条的 const 表**（`core/pipeline.dart` 里还有一份）。
+  /// 现在转发到 [CodecTables.bloodlineLetterFor] —— 单一实现、数据驱动。
+  ///
+  /// 另外那条"不能只看 length == 1 就当字母"的教训已经修进那个方法里了：
+  /// 中文系别名也是单字符（「冰」「火」「龙」），当成字母会导致后续查表全空。
+  String? _bloodlineLetterOf(String nameOrLetter) =>
+      tables?.bloodlineLetterFor(nameOrLetter);
 
   /// 这只精灵**能学的全部技能名**（= level + stone + 全部 18 个血脉技能）。
   ///
@@ -605,12 +589,10 @@ class _PetRow extends StatelessWidget {
       // 这条技能需要哪个系别的血脉（技能表里带 type）
       final type = t.skillTypeByName[skillName];
       if (type == null) return;
-      const letterByType = {
-        '普通': 'B', '草': 'C', '火': 'D', '水': 'E', '光': 'F', '地': 'G',
-        '冰': 'H', '龙': 'I', '电': 'J', '毒': 'K', '虫': 'L', '武': 'M',
-        '翼': 'N', '萌': 'O', '幽': 'P', '恶': 'Q', '机械': 'R', '幻': 'S',
-      };
-      final letter = letterByType[type];
+      // 系别名 -> 血脉字母：走统一入口，**不在这里抄表**。
+      // 原来这里写死 18 条，是同一个映射的第三份副本 ——
+      // 官方加一个系别，数据包对了这里也是 null，用户点了技能静默没反应。
+      final letter = t.bloodlineLetterFor(type);
       if (letter == null) {
         // 「首领」「巨兽」这类特殊血脉没有对应的系别技能，理论上到不了这里
         ScaffoldMessenger.of(context).showSnackBar(
@@ -873,6 +855,7 @@ class _PetRow extends StatelessWidget {
                       overridden: overrideLetter != null,
                       onChanged: changeBloodline,
                       icons: icons,
+                      tables: tables,
                       rankedLetters: bloodlineRanks.forPet(displayName),
                     ),
                   ],
@@ -2129,6 +2112,7 @@ class _BloodlineControl extends StatelessWidget {
     required this.overridden,
     required this.onChanged,
     required this.icons,
+    required this.tables,
     this.rankedLetters = const [],
   });
 
@@ -2137,6 +2121,9 @@ class _BloodlineControl extends StatelessWidget {
   final ValueChanged<String?> onChanged;
   final IconAssets icons;
 
+  /// 数据表。**必传** —— 血脉选项从它来，不给就没得选。
+  final CodecTables? tables;
+
   /// 本地匹配给的候选顺序（最可能的在前）。空则按字母表顺序。
   ///
   /// 实测自动判定不可靠（本地匹配单独作答只有 0-2/6），
@@ -2144,27 +2131,20 @@ class _BloodlineControl extends StatelessWidget {
   /// 而不是让它替用户决定 —— 用户从「24 个里找」变成「3 个里挑」。
   final List<String> rankedLetters;
 
-  /// 全部 24 条血脉，按字母表顺序（与阵容码一致）。
-  static const _all = [
-    ('B', '普通'), ('C', '草'), ('D', '火'), ('E', '水'), ('F', '光'),
-    ('G', '地'), ('H', '冰'), ('I', '龙'), ('J', '电'), ('K', '毒'),
-    ('L', '虫'), ('M', '武'), ('N', '翼'), ('O', '萌'), ('P', '幽'),
-    ('Q', '恶'), ('R', '机械'), ('S', '幻'), ('T', '首领'), ('U', '巨兽'),
-    ('V', '黑魔法'), ('W', '异核'), ('X', '污染'), ('Y', '奇异'),
-  ];
+  /// 全部血脉（字母 + 短名），按字母序。
+  ///
+  /// ⚠️ 这里**曾经写死 24 条元组**，是"血脉宇宙"的又一份副本：
+  /// 官方加一条血脉、数据包更新了，这个选择器还是 24 个 —— 新血脉选不到。
+  /// 现在从 [CodecTables.bloodlineChoices] 来（数据包驱动）。
+  ///
+  /// [tables] 为空时返回空列表：宁可选择器里没东西，也不要展示一份过期的表。
+  List<(String, String)> get _all =>
+      tables?.bloodlineChoices ?? const <(String, String)>[];
 
-  /// 当前血脉名对应的字母；不在 24 条里返回 null。
+  /// 当前血脉名对应的字母；不在表里返回 null。
   ///
   /// 图标索引是按**字母**键的，而界面这里拿到的是名字（如「首领」）。
-  String? get _bloodlineLetter {
-    final n = bloodline.endsWith('血脉')
-        ? bloodline.substring(0, bloodline.length - 2)
-        : bloodline;
-    for (final (letter, name) in _all) {
-      if (name == n) return letter;
-    }
-    return null;
-  }
+  String? get _bloodlineLetter => tables?.bloodlineLetterFor(bloodline);
 
   @override
   Widget build(BuildContext context) {
@@ -2239,7 +2219,8 @@ class _BloodlineControl extends StatelessWidget {
       rankedLetters.where((l) => _nameOf(l) != null).take(3).toList();
 
   /// 字母 -> 血脉名；不在表里返回 null。
-  static String? _nameOf(String letter) {
+  /// 字母 -> 短名。查的是 [_all]（数据表）。
+  String? _nameOf(String letter) {
     for (final (l, name) in _all) {
       if (l == letter) return name;
     }

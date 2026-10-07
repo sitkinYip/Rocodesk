@@ -230,7 +230,9 @@ void main() {
         ],
       }, codec: codec, tables: tables);
 
-      final team = toCodecTeam(rt, const {});
+      final team = toCodecTeam(rt, const {},
+        tables: _tables(),
+      );
       expect(team.header, 'B', reason: 'toCodecTeam 必须设标准头段');
 
       final code = codec.encode(team);
@@ -269,7 +271,9 @@ void main() {
            'evs': ['物攻', '物防', '生命'], 'skills': []}
         ],
       }, codec: codec, tables: tables);
-      final code = codec.encode(toCodecTeam(rt, const {}));
+      final code = codec.encode(toCodecTeam(rt, const {},
+        tables: _tables(),
+      ));
       expect(bloodlineSlot(code), 'T');
     });
 
@@ -282,7 +286,9 @@ void main() {
            'evs': ['物攻', '物防', '生命'], 'skills': []}
         ],
       }, codec: codec, tables: tables);
-      final code = codec.encode(toCodecTeam(rt, const {}));
+      final code = codec.encode(toCodecTeam(rt, const {},
+        tables: _tables(),
+      ));
       expect(bloodlineSlot(code), 'A', reason: '必须显式写 A，不能留空让 codec 用默认 T');
     });
 
@@ -294,7 +300,9 @@ void main() {
         ],
       }, codec: codec, tables: tables);
       // 模型说首领(T)，用户改成冰(H)
-      final code = codec.encode(toCodecTeam(rt, const {1: '冰'}));
+      final code = codec.encode(toCodecTeam(rt, const {1: '冰'},
+        tables: _tables(),
+      ));
       expect(bloodlineSlot(code), 'H', reason: '人工指定必须赢过自动识别');
     });
 
@@ -305,7 +313,9 @@ void main() {
            'evs': ['物攻', '物防', '生命'], 'skills': []}
         ],
       }, codec: codec, tables: tables);
-      final code = codec.encode(toCodecTeam(rt, const {1: ''}));
+      final code = codec.encode(toCodecTeam(rt, const {1: ''},
+        tables: _tables(),
+      ));
       expect(bloodlineSlot(code), 'A');
     });
   });

@@ -158,7 +158,9 @@ class _ParsePageState extends State<ParsePage> {
   (String, String, String) _reencode() {
     final rt = _parsed;
     final codec = _codec;
-    if (rt == null || codec == null) return ('', '', '');
+    // 数据表是出码的必需依赖（血脉名 -> 字母靠它），没加载完就不出码
+    final tables = _tables;
+    if (rt == null || codec == null || tables == null) return ('', '', '');
     try {
       final team = toCodecTeam(
         rt,
@@ -169,7 +171,7 @@ class _ParsePageState extends State<ParsePage> {
         petOverrides: _petOverrides,
         natureOverrides: _natureOverrides,
         evOverrides: _evOverrides,
-        tables: _tables,
+        tables: tables,
       );
       return (codec.encode(team), '', codec.toGameText(team));
     } on TeamCodeException catch (e) {

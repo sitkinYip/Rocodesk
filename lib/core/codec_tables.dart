@@ -251,4 +251,79 @@ class CodecTables {
     }
     return full;
   }
+
+  /// **血脉名/字母 -> 阵容码字母**。认不出返回 null。
+  ///
+  /// ## 这是唯一的入口，不要再在别处写映射表
+  ///
+  /// 这个映射曾经在四个地方各有一份实现，其中三份是把表抄进代码的常量：
+  ///
+  ///   * `pipeline._letterForName()`       24 条写死
+  ///   * `result_view._bloodlineLetterOf()` 24 条写死
+  ///   * `result_view.addLockedSkill()`     18 条写死（只有系别那条路）
+  ///   * `pipeline.bloodlineLetterFromIcon()` ✅ 遍历数据表（唯一对的那份）
+  ///
+  /// 后果不是"不整洁"，而是**热更新静默失灵**：数据包里加了新血脉，
+  /// 抄的那三份表还是旧的，`map[name]` 返回 null，调用点静默 return ——
+  /// 不崩溃、不报错、功能看着还在。
+  ///
+  /// 现在统一查 [bloodlineAlias]（数据表里 24 条 × 3 种写法 = 72 条，
+  /// 「火系血脉」「火系」「火」都能查到）。**新增血脉只需改数据包，代码零改动。**
+  ///
+  /// 三级回退，从严到宽：
+  ///   1. 原样查别名表（覆盖全名 / 短名 / `X系`）
+  ///   2. 剥掉 `系血脉` / `血脉` / `系` 再查
+  ///   3. 前缀匹配（容忍「火系血脉（特殊）」这类带后缀的写法）
+  String? bloodlineLetterFor(String nameOrLetter) {
+    final raw = nameOrLetter.trim();
+    if (raw.isEmpty) return null;
+
+    // 已经是字母：只有数据表里存在的字母才算数，
+    // 避免把随便一个单字符当成合法血脉。
+    final upper = raw.toUpperCase();
+    if (raw.length == 1 && bloodline.containsKey(upper)) return upper;
+
+    // 1) 原样
+    final direct = bloodlineAlias[raw];
+    if (direct != null) return direct;
+
+    // 2) 归一化后
+    final stripped = stripBloodline(raw);
+    final byStripped = bloodlineAlias[stripped] ?? bloodlineAlias['$stripped系'];
+    if (byStripped != null) return byStripped;
+
+    // 3) 前缀匹配。遍历**别名表**而不是写死的表 ——
+    //    这是"数据驱动"的关键：表里加一条，这里自动认。
+    for (final e in bloodlineAlias.entries) {
+      if (raw.startsWith(e.key) || e.key.startsWith(raw)) return e.value;
+    }
+    for (final e in bloodline.entries) {
+      if (raw.startsWith(e.key)) return e.key;
+      if (stripBloodline(e.value) == stripped) return e.key;
+    }
+    return null;
+  }
+
+  /// 数据表里出现过的所有系别名（去重）。
+  ///
+  /// **不要**在代码里再写一份 18 个系别的列表 —— 那又是一份会过期的副本。
+  /// 来源是技能表的系别字段：每个血脉技能都带 `type`，合起来就是全集。
+  late final Set<String> knownTypes = <String>{
+    ...skillTypeByName.values,
+    // 精灵自带的系别也并进来：万一某个系别还没有技能，精灵侧也覆盖到
+    for (final list in petTypesByCode.values) ...list,
+  };
+
+  /// 全部血脉，按字母序：`[(字母, 短名), ...]`，如 `[('B', '普通'), ...]`。
+  ///
+  /// 给"选血脉"的界面用。**不要在界面里再抄一份这 24 条** ——
+  /// 那样官方加一条血脉，数据包更新了、界面还是旧的。
+  ///
+  /// 短名由 [stripBloodline] 从全名剥出来（`火系血脉` -> `火`），
+  /// 与界面其它地方显示的血脉名一致。
+  late final List<(String, String)> bloodlineChoices = [
+    for (final e in (bloodline.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key))))
+      (e.key, stripBloodline(e.value)),
+  ];
 }

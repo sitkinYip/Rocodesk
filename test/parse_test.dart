@@ -79,7 +79,9 @@ void main() {
         ],
       }, codec: codec, tables: tables);
 
-      final original = toCodecTeam(rt, const {});
+      final original = toCodecTeam(rt, const {},
+        tables: _tables(),
+      );
       final code = codec.encode(original);
 
       // 走解析路径
@@ -125,7 +127,9 @@ void main() {
         'B~Gzg~~~H~V~BQBPBUbDCa~ayIs~a0bQ~bC_S~31~~~I~c~BQBPBTbFcK~a23C~a2y0~ax-E~u8~~~M~Y~BPBRBUa7qY~bDBy~bAls~a0ao~wF~~~G~C~BSBPBTbAkI~a20s~a230~a22G~yQ~~~M~C~BQBPBUa5PY~bPL6~bPOk~bPNe~vD~~~T~V~BQBPBUayI2~ayGq~ayAu~bY86~ZZH~FA~A~A~A~A~A~A~A~A~A~A~A~',
       );
       final shown = toRecognizedTeam(original, tables);
-      final reencoded = codec.encode(toCodecTeam(shown, const {}));
+      final reencoded = codec.encode(toCodecTeam(shown, const {},
+        tables: _tables(),
+      ));
       expect(reencoded, original.payload,
           reason: '解析后原样再出码，必须逐字节相同（否则用户改一个字就毁码）');
     });

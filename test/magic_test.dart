@@ -123,7 +123,9 @@ void main() {
           ],
         }, codec: codec, tables: tables);
 
-        final code = codec.encode(toCodecTeam(rt, const {}));
+        final code = codec.encode(toCodecTeam(rt, const {},
+        tables: _tables(),
+      ));
         expect(magicSeg(code), code3);
         // 往返后魔法名不变
         expect(codec.decode(code).magic, name);
@@ -149,7 +151,9 @@ void main() {
       expect(rt.magic, '进化之力', reason: '模型读的是进化之力');
 
       final code = codec.encode(
-        toCodecTeam(rt, const {}, magicOverride: '光合治愈'),
+        toCodecTeam(rt, const {}, magicOverride: '光合治愈',
+        tables: _tables(),
+      ),
       );
       expect(codec.decode(code).magic, '光合治愈',
           reason: '用户改成光合治愈后必须生效');
@@ -158,7 +162,9 @@ void main() {
     test('三个魔法互相切换都生效', () {
       for (final m in const ['进化之力', '光合治愈', '愿力强化']) {
         final code = codec.encode(
-          toCodecTeam(baseTeam(), const {}, magicOverride: m),
+          toCodecTeam(baseTeam(), const {}, magicOverride: m,
+        tables: _tables(),
+      ),
         );
         expect(codec.decode(code).magic, m, reason: m);
       }
@@ -167,7 +173,9 @@ void main() {
     test('覆盖为空串时回落到模型识别的结果，而不是变成空魔法', () {
       final rt = baseTeam();
       final code = codec.encode(
-        toCodecTeam(rt, const {}, magicOverride: ''),
+        toCodecTeam(rt, const {}, magicOverride: '',
+        tables: _tables(),
+      ),
       );
       expect(codec.decode(code).magic, '进化之力');
     });
@@ -176,7 +184,9 @@ void main() {
       final rt = baseTeam();
       expect(
         () => codec.encode(
-          toCodecTeam(rt, const {}, magicOverride: '愿力冲击'),
+          toCodecTeam(rt, const {}, magicOverride: '愿力冲击',
+        tables: _tables(),
+      ),
         ),
         throwsA(isA<TeamCodeException>()),
         reason: '「愿力冲击」不是合法魔法名，必须报错而不是写进去',

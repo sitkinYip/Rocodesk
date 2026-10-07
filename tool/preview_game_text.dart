@@ -69,7 +69,7 @@ void main() {
     ],
   }, codec: codec, tables: tables);
 
-  final team = toCodecTeam(rt, const {});
+  final team = toCodecTeam(rt, const {}, tables: tables);
   print('========== 给官方 AI 助手的描述 ==========');
   print(codec.toGameText(team));
   print('==========================================');

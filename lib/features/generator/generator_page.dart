@@ -387,6 +387,12 @@ class _GeneratorPageState extends State<GeneratorPage> {
       return ('', '有 ${unresolved.length} 只精灵没能对上图鉴（${unresolved.join('、')}），'
           '无法生成阵容码。请在下面选择它们的形态。', '');
     }
+    // 数据表是**出码的必需依赖**（血脉名 -> 字母要靠它）。
+    // 没加载完就不出码，而不是猜一个 —— 见 toCodecTeam 的 interface 说明。
+    final tables = _tables;
+    if (tables == null) {
+      return ('', '数据表还没加载好，稍等一下再试。', '');
+    }
     try {
       final team = toCodecTeam(
         rt,
@@ -398,7 +404,7 @@ class _GeneratorPageState extends State<GeneratorPage> {
         petOverrides: _petOverrides,
         natureOverrides: _natureOverrides,
         evOverrides: _evOverrides,
-        tables: _tables,
+        tables: tables,
       );
       final code = codec.encode(team);
       final aiText = codec.toGameText(team);

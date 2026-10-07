@@ -224,7 +224,9 @@ void main() {
 
     test('改成不存在的性格会抛错', () {
       final team = toCodecTeam(one(), const {},
-          natureOverrides: const {1: '不存在的性格'});
+          natureOverrides: const {1: '不存在的性格'},
+        tables: tables,
+      );
       expect(() => codec.encode(team), throwsA(isA<TeamCodeException>()));
     });
   });

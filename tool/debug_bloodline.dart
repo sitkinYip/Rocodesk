@@ -46,7 +46,7 @@ void main() {
   print('  types           = ${p.types}');
   print('');
 
-  final team = toCodecTeam(rt, const {});
+  final team = toCodecTeam(rt, const {}, tables: tables);
   final codecPet = team.pets.single;
   print('toCodecTeam 之后的 Pet:');
   print('  bloodline       = ${codecPet.bloodline}');

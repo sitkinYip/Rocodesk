@@ -85,12 +85,6 @@ class RecognizedTeam {
   bool get allResolved => pets.isNotEmpty && pets.every((p) => p.resolved);
 }
 
-/// 18 个合法系别。用于校验模型返回的系别图标名。
-const Set<String> kKnownTypes = {
-  '普通', '火', '水', '草', '电', '冰', '武', '毒', '地',
-  '翼', '萌', '虫', '幻', '幽', '恶', '龙', '机械', '光',
-};
-
 /// 血脉图标名 -> 阵容码字母。
 ///
 /// `BLOODLINE` 表的写法是「翼系血脉」「首领血脉」，而图标名是「翼」「首领」，
@@ -256,7 +250,10 @@ RecognizedTeam normalizeVlmOutput(
       }
 
       // ---- 系别校验 ----
-      final badTypes = pet.types.where((t) => !kKnownTypes.contains(t)).toList();
+      // 合法系别从**数据表**来（`tables.knownTypes`），不再写死 18 个。
+      // 写死的话，官方加一个系别就会出现"数据对了、校验把它当错的"。
+      final badTypes =
+          pet.types.where((t) => !tables.knownTypes.contains(t)).toList();
       if (badTypes.isNotEmpty) {
         pet.warnings.add('系别图标识别出未知属性：${badTypes.join('、')}');
       }
@@ -342,11 +339,15 @@ Team toCodecTeam(
   Map<int, String> petOverrides = const {},
   Map<int, String> natureOverrides = const {},
   Map<int, List<String>> evOverrides = const {},
-  /// 数据表，用于**换了精灵之后反查新名字**。
+  /// 数据表。**必传**。
   ///
-  /// 不传时新精灵的名字会是识别时的旧名字 —— 那只影响显示与导出文本，
-  /// 不影响阵容码（码里只有精灵码）。界面都应当传。
-  CodecTables? tables,
+  /// 原来它是可选的（理由：没表只是名字显示旧一点）。但血脉解析也靠它 ——
+  /// 没有表时「火」这类名字查不到字母，会**静默回落到「无血脉」**，
+  /// 出码时血脉直接丢了，而且不报错。
+  ///
+  /// 所以改成必传：**要么给我表，要么别指望我正确解析血脉**。
+  /// 这条 interface 改动是被一个真实的静默失败逼出来的。
+  required CodecTables tables,
 }) {
   final pets = <Pet>[];
   for (var i = 0; i < rt.pets.length; i++) {
@@ -376,7 +377,7 @@ Team toCodecTeam(
         letter = noBloodlineLetter;
         name = '';
       } else {
-        letter = _letterForName(override) ?? noBloodlineLetter;
+        letter = _letterForName(tables, override) ?? noBloodlineLetter;
         name = override;
       }
     } else if (p.bloodlineLetter.isNotEmpty) {
@@ -385,7 +386,7 @@ Team toCodecTeam(
       name = p.bloodline;
     } else if (p.bloodline.isNotEmpty) {
       // 有名字但没字母（理论上不该发生，兜底再解析一次）
-      letter = _letterForName(p.bloodline) ?? noBloodlineLetter;
+      letter = _letterForName(tables, p.bloodline) ?? noBloodlineLetter;
       name = p.bloodline;
     } else {
       letter = noBloodlineLetter; // 明确表示"无血脉"
@@ -396,7 +397,9 @@ Team toCodecTeam(
       petId: petId,
       // 换了精灵时名字要跟着换 —— 否则界面上会出现"寂灭骨龙"配"雪影娃娃"的码。
       // 有表就反查真名，没表只能沿用识别时的名字。
-      petName: (tables != null && petId != p.petId)
+      // 换了精灵时名字要跟着换 —— 否则界面上会出现"寂灭骨龙"配"雪影娃娃"的码。
+      // tables 是必传参数，所以这里一定能反查真名。
+      petName: petId != p.petId
           ? (tables.petNames[petId] ?? p.name)
           : p.name,
       nature: nature,
@@ -422,19 +425,15 @@ Team toCodecTeam(
 }
 
 /// 界面上的血脉名 -> 阵容码字母。认不出返回 null。
-String? _letterForName(String name) {
-  const known = {
-    '普通': 'B', '草': 'C', '火': 'D', '水': 'E', '光': 'F', '地': 'G',
-    '冰': 'H', '龙': 'I', '电': 'J', '毒': 'K', '虫': 'L', '武': 'M',
-    '翼': 'N', '萌': 'O', '幽': 'P', '恶': 'Q', '机械': 'R', '幻': 'S',
-    '首领': 'T', '巨兽': 'U', '黑魔法': 'V', '异核': 'W', '污染': 'X', '奇异': 'Y',
-  };
-  if (known.containsKey(name)) return known[name];
-  for (final e in known.entries) {
-    if (name.startsWith(e.key) || e.key.startsWith(name)) return e.value;
-  }
-  return null;
-}
+///
+/// ⚠️ 这里**曾经写死了一张 24 条的表**（另一个文件里还有一份 24 条、
+/// 一份 18 条的）。现在统一转发到 [CodecTables.bloodlineLetterFor] ——
+/// 那份映射只允许有一个实现，而且必须**数据驱动**。
+///
+/// 否则数据包加一条新血脉时，代码里这几份表不会跟着变，
+/// `map[name]` 返回 null，调用点静默回落成「无血脉」。
+String? _letterForName(CodecTables tables, String name) =>
+    tables.bloodlineLetterFor(name);
 
 // ---------------------------------------------------------------------------
 // 解码方向：阵容码 -> 可展示的识别结果

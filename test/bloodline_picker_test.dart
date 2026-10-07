@@ -10,14 +10,29 @@
 /// 这类"静默丢数据"的 bug 靠肉眼很难发现 —— 所以用穷举断言钉住。
 library;
 
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rocodesk/core/bloodline_ranks.dart';
+import 'package:rocodesk/core/codec_tables.dart';
 import 'package:rocodesk/core/icon_assets.dart';
 import 'package:rocodesk/core/pipeline.dart';
 import 'package:rocodesk/core/skill_matcher.dart';
 import 'package:rocodesk/features/generator/result_view.dart';
 import 'package:rocodesk/theme/app_theme.dart';
+
+Map<String, dynamic> _read(String p) =>
+    jsonDecode(File(p).readAsStringSync()) as Map<String, dynamic>;
+
+CodecTables _tables() => CodecTables.fromMaps(
+      pets: _read('assets/data/pets.json'),
+      skills: _read('assets/data/skills.json'),
+      natures: _read('assets/data/natures.json'),
+      codec: _read('assets/data/codec.json'),
+      learnsets: _read('assets/data/learnsets.json'),
+    );
 
 /// 全部 24 条血脉的名字，按官方字母表顺序。测试里独立列一遍，
 /// **不 import 生产代码的常量** —— 否则常量本身写错就测不出来了。
@@ -70,6 +85,8 @@ Future<Map<String, int>> _openPicker(
           teamName: '队伍3',
           onEditTeamName: (_) {},
           icons: IconAssets.empty(),
+          // 血脉选项现在从数据表来（原来界面里写死 24 条，是副本）
+          tables: _tables(),
           bloodlineRanks: _FakeRanks(rankedLetters),
           onChooseMagic: (_) {},
           onChooseVariant: (_, _) {},
@@ -179,6 +196,7 @@ void main() {
               teamName: '队伍3',
               onEditTeamName: (_) {},
               icons: IconAssets.empty(),
+              tables: _tables(),
               bloodlineRanks: storeless,
               onChooseMagic: (_) {},
               onChooseVariant: (_, _) {},

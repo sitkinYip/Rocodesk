@@ -170,7 +170,9 @@ void main() {
           {'name': '寂灭骨龙', 'nature': '开朗', 'skills': []},
         ],
       }, codec: codec, tables: _tables());
-      final text = codec.toGameText(toCodecTeam(rt, const {}));
+      final text = codec.toGameText(toCodecTeam(rt, const {},
+        tables: _tables(),
+      ));
 
       final order = [
         '雪影娃娃', '月牙雪熊', '尖嘴狐仙', '卡瓦重', '饮雪狂兽', '寂灭骨龙',
