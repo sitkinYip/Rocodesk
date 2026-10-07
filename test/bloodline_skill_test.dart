@@ -50,9 +50,44 @@ void main() {
 
     test('按来源拆分的可学数据在，且雪影娃娃是 16/16/18', () {
       expect(matcher.hasSourceData, isTrue);
-      final avail = matcher.availableNames('wz', null) as List<String>;
-      // 16 level + 16 stone + 18 bloodline = 50
-      expect(avail.length, 50, reason: '不知道血脉时全都放出来');
+      // 全部可学 = 16 level + 16 stone + 18 bloodline = 50
+      final all = matcher.allNamesForPet('wz') as List<String>;
+      expect(all.length, 50);
+    });
+  });
+
+  group('候选池要给全量，不能按当前血脉砍掉', () {
+    // 这是用户指出的问题：雪影娃娃能学 50 个，但冰血脉下只显示 33 个，
+    // 「贪婪」（恶系血脉技能）根本不出现 —— 用户没法"先看见再决定"。
+    test('雪影娃娃的候选池是 50 个，与血脉无关', () {
+      expect((matcher.allNamesForPet('wz') as List<String>).length, 50);
+    });
+
+    test('恶系血脉技能「贪婪」在池子里 —— 用户要能先看到它', () {
+      final all = matcher.allNamesForPet('wz') as List<String>;
+      expect(all, contains('贪婪'));
+      // 当前是冰血脉，所以它被标为"不可用"，但**不能在池子里消失**
+      expect(matcher.isAvailable('贪婪', 'wz', '冰'), isFalse);
+      expect(matcher.isAvailable('贪婪', 'wz', '恶'), isTrue);
+    });
+
+    test('18 个血脉技能全都在池子里，一个不少', () {
+      final all = (matcher.allNamesForPet('wz') as List<String>).toSet();
+      for (final s in const [
+        '冰爪', '飞吻', '星星撞击', '虹光冲击', '升龙咆哮', '徒长',
+        '引燃', '蓄水', '泥浆铠甲', '麻痹', '毒孢子', '假寐',
+        '化劲', '羽化加速', '勾魂', '贪婪', '啮合传递', '超维投射',
+      ]) {
+        expect(all, contains(s), reason: '$s 是血脉技能，必须在候选池里');
+      }
+    });
+
+    test('availableNames 仍然只给"当前血脉下能用的"（用来标记，不是当池子）', () {
+      final usable = matcher.availableNames('wz', '冰') as List<String>;
+      // 16 level + 16 stone + 1 冰系血脉技能 = 33
+      expect(usable.length, 33);
+      expect(usable, contains('冰爪'));
+      expect(usable, isNot(contains('贪婪')));
     });
   });
 

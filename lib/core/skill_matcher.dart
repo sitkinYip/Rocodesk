@@ -104,15 +104,31 @@ class SkillMatcher {
   ///
   /// 规则（实测自知识库）：
   ///   * level / stone 来源的技能 —— 一直可用
-  ///   * bloodline 来源的技能 —— 只有它的系别 ∈ [bloodlineType] 时才可用
+  ///   * bloodline 来源的技能 —— 只有它的系别 == [bloodlineType] 时才可用
   ///
-  /// 为什么只按血脉判断、不看精灵固定系别：实测每只精灵的 18 个血脉技能
-  /// **恰好覆盖 18 个系别**，而精灵固定系别（1~2 个）本来就包含在自己的
-  /// level/stone 技能里。所以血脉技能是否可用，只由血脉决定。
+  /// ⚠️ **这个函数只该用来"标记哪些不可用"，不要用来当候选池。**
+  /// 用户要的是"这只精灵能学的全部"（50 个），而不是"当前血脉下能用的"
+  /// （33 个）—— 我曾用它当候选池，结果被指出"技能池少了"：
+  /// 雪影娃娃改恶血脉能学「贪婪」，但改之前那个技能根本不出现在列表里，
+  /// 用户没法先看见再决定。候选池请用 [allNamesForPet]。
   ///
-  /// [bloodlineType] 为 null 时（如"无明显血脉"或特殊血脉）按"不过滤"处理 ——
-  /// 与其猜错让用户少几个能选的技能，不如都放出来，反正最终由 encode 校验。
+  /// [bloodlineType] 为 null 时（如"无明显血脉"或特殊血脉）按"不过滤"处理。
   List<String> availableNames(String? petCode, String? bloodlineType) {
+    final all = allNamesForPet(petCode);
+    if (bloodlineType == null || bloodlineType.isEmpty) return all;
+    return all
+        .where((n) => isAvailable(n, petCode, bloodlineType))
+        .toList();
+  }
+
+  /// 这只精灵**能学的全部技能名**（排序后）。
+  ///
+  /// = level + stone + **全部 18 个血脉技能**（不管当前血脉是哪个）。
+  ///
+  /// 为什么血脉技能要全给：那些技能本来就在它的可学列表里，只是要换血脉
+  /// 才能用。让用户先看见「贪婪」，他才知道"改恶血脉能学这个"——
+  /// 藏起来等于剥夺了这个信息。是否可用交给 [isAvailable] 标记。
+  List<String> allNamesForPet(String? petCode) {
     final src = petCode == null ? null : _bySource[petCode];
     if (src == null) {
       // 没有来源数据（老数据包）-> 退回完整可学列表
@@ -120,32 +136,13 @@ class SkillMatcher {
     }
 
     final out = <String>{};
-    void addAll(Iterable<String> codes) {
-      for (final c in codes) {
+    for (final key in const ['level', 'stone', 'other', 'bloodline']) {
+      for (final c in (src[key] ?? const <String>[])) {
         final nm = _nameOfCode(c);
         if (nm != null) out.add(nm);
       }
     }
-
-    addAll(src['level'] ?? const []);
-    addAll(src['stone'] ?? const []);
-    addAll(src['other'] ?? const []);
-
-    // 血脉技能：只有系别对上的才可用
-    final bl = src['bloodline'] ?? const [];
-    for (final c in bl) {
-      final nm = _nameOfCode(c);
-      if (nm == null) continue;
-      if (bloodlineType == null || bloodlineType.isEmpty) {
-        // 不知道血脉就不排除，交给用户
-        out.add(nm);
-      } else if (_skillTypes[nm] == bloodlineType) {
-        out.add(nm);
-      }
-    }
-
-    final list = out.toList()..sort();
-    return list;
+    return out.toList()..sort();
   }
 
   /// 某个技能在**当前血脉**下还能不能用。

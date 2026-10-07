@@ -461,7 +461,17 @@ class _PetRow extends StatelessWidget {
 
   /// 界面上的血脉名/字母 -> 阵容码字母。
   String? _bloodlineLetterOf(String nameOrLetter) {
-    if (nameOrLetter.length == 1) return nameOrLetter;
+    // ⚠️ 这里**不能**用 `length == 1` 判断"已经是字母"。
+    //
+    // 中文系别名也是单字符（「冰」「火」「龙」…），会被误判成字母直接返回，
+    // 于是 `bloodline['冰']` 查不到 -> 类型为 null -> "血脉锁定"整块失效。
+    // 我这么错过一次，症状是"被锁的技能没有标记"，但功能看着还在。
+    if (nameOrLetter.length == 1 &&
+        nameOrLetter.codeUnitAt(0) < 128 &&
+        RegExp(r'[A-Za-z]').hasMatch(nameOrLetter)) {
+      return nameOrLetter.toUpperCase();
+    }
+
     const known = {
       '普通': 'B', '草': 'C', '火': 'D', '水': 'E', '光': 'F', '地': 'G',
       '冰': 'H', '龙': 'I', '电': 'J', '毒': 'K', '虫': 'L', '武': 'M',
@@ -475,15 +485,48 @@ class _PetRow extends StatelessWidget {
     return known[n];
   }
 
-  /// 当前血脉下这只精灵真正能用的技能名。
+  /// 这只精灵**能学的全部技能名**（= level + stone + 全部 18 个血脉技能）。
   ///
-  /// 排序优先"这只精灵的"，然后是别的 —— 让常用项排在前面。
+  /// ⚠️ 这里刻意**不按当前血脉过滤**。
+  ///
+  /// 我一开始过滤了，结果被用户指出"技能池少了"：雪影娃娃一共能学 50 个，
+  /// 但冰血脉下只显示 33 个，「贪婪」（恶系血脉技能）根本不出现 ——
+  /// 而用户正是要"先看见有哪些可能，再决定换成什么血脉"。
+  ///
+  /// 所以候选池给全量，**哪些当前不可用由 [lockedSkills] 标记**。
   List<String> get currentLearnable {
     final t = tables;
     if (t == null) return learnable;
     final m = t.skillMatcher;
     if (!m.hasSourceData) return learnable;
-    return m.availableNames(effectivePetId, currentBloodlineType);
+    return m.allNamesForPet(effectivePetId);
+  }
+
+  /// 当前血脉下**用不了**的技能名集合。
+  ///
+  /// 用来在选择器里给这些技能打个标记（如"需 X 血脉"），
+  /// 而不是把它们藏起来。
+  Set<String> get lockedSkills {
+    final t = tables;
+    if (t == null) return const {};
+    final m = t.skillMatcher;
+    if (!m.hasSourceData) return const {};
+    final type = currentBloodlineType;
+    if (type == null || type.isEmpty) return const {};
+    return currentLearnable
+        .where((s) => !m.isAvailable(s, effectivePetId, type))
+        .toSet();
+  }
+
+  /// 某个技能因血脉不可用时，提示用户需要什么血脉。
+  ///
+  /// 返回 null 表示可用（或不知道）。
+  String? lockedReason(String skillName) {
+    final t = tables;
+    if (t == null) return null;
+    if (!lockedSkills.contains(skillName)) return null;
+    final ty = t.skillTypeByName[skillName];
+    return ty == null ? '当前血脉下不可用' : '需$ty系血脉';
   }
 
   @override
@@ -538,8 +581,10 @@ class _PetRow extends StatelessWidget {
         builder: (_) => _SkillFixSheet(
           readName: current,
           suggestions: pet.skillSuggestions[current] ?? const [],
-          // 可学列表按**当前血脉**过滤 —— 血脉变了，一些血脉技能就学不了了
+          // 完整候选池（含全部 18 个血脉技能）；不可用的那些由 locked 标记
           learnable: currentLearnable,
+          locked: lockedSkills,
+          lockedReasonOf: lockedReason,
           icons: icons,
           // 换技能/重新搭配需要全部 579 个技能，不只是这只精灵能学的
           allSkills: t == null
@@ -984,6 +1029,7 @@ class _IconChoice extends StatelessWidget {
     required this.onTap,
     this.badge,
     this.highlighted = false,
+    this.lockedNote,
   });
 
   final String label;
@@ -996,9 +1042,16 @@ class _IconChoice extends StatelessWidget {
   /// 是否为"推荐候选"（描边高亮）。
   final bool highlighted;
 
+  /// 因血脉不可用时的说明（如"需恶系血脉"）。
+  ///
+  /// 有这个标记的技能**仍然可点** —— 用户可以先去改血脉。
+  /// 这里只做提示，不做拦截：拦住了用户反而不知道有这条路径。
+  final String? lockedNote;
+
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+    final locked = lockedNote != null;
     return InkWell(
       onTap: onTap,
       borderRadius: AppRadii.inputR,
@@ -1018,7 +1071,15 @@ class _IconChoice extends StatelessWidget {
             Stack(
               clipBehavior: Clip.none,
               children: [
-                RefIcon(assetPath: iconPath, size: 40, fallbackText: label),
+                Opacity(
+                  // 不可用的压暗一点，一眼能和可用的区分开
+                  opacity: locked ? 0.45 : 1.0,
+                  child: RefIcon(
+                    assetPath: iconPath,
+                    size: 40,
+                    fallbackText: label,
+                  ),
+                ),
                 if (badge != null)
                   Positioned(
                     right: -6,
@@ -1051,10 +1112,27 @@ class _IconChoice extends StatelessWidget {
               style: TextStyle(
                 fontSize: AppType.sCaption,
                 fontWeight: highlighted ? FontWeight.w600 : FontWeight.w400,
-                color: highlighted ? c.accent : c.textPrimary,
+                color: locked
+                    ? c.textTertiary
+                    : (highlighted ? c.accent : c.textPrimary),
                 height: 1.25,
               ),
             ),
+            if (locked) ...[
+              const SizedBox(height: 2),
+              // 说明"为什么现在不能用"，而不是只说"不可用"
+              Text(
+                lockedNote!,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 9,
+                  color: c.textTertiary,
+                  height: 1.1,
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -1251,6 +1329,8 @@ class _SkillFixSheet extends StatefulWidget {
     required this.readName,
     required this.suggestions,
     required this.learnable,
+    required this.locked,
+    required this.lockedReasonOf,
     required this.icons,
     this.allSkills,
   });
@@ -1261,8 +1341,16 @@ class _SkillFixSheet extends StatefulWidget {
   /// 近似候选（已按匹配度排序）。
   final List<SkillSuggestion> suggestions;
 
-  /// 这只精灵能学的全部技能名。
+  /// 这只精灵能学的全部技能名（含全部血脉技能）。
   final List<String> learnable;
+
+  /// 当前血脉下用不了的技能名。
+  ///
+  /// 它们**仍然可选**（用户可以换血脉），只是标出来免得困惑。
+  final Set<String> locked;
+
+  /// 不可用的原因文案（如"需恶系血脉"）。
+  final String? Function(String) lockedReasonOf;
 
   /// 参考图标（可为空：没有图标资源时功能照常）。
   final IconAssets icons;
@@ -1428,6 +1516,14 @@ class _SkillFixSheetState extends State<_SkillFixSheet> {
                 style:
                     TextStyle(fontSize: AppType.sCaption, color: c.textTertiary),
               ),
+              if (!_allScope && widget.locked.isNotEmpty) ...[
+                const SizedBox(height: AppSpacing.xs),
+                InlineNotice(
+                  message: '灰掉的是当前血脉下用不了的技能 —— '
+                      '改血脉后就能选。共 ${widget.locked.length} 个。',
+                  severity: NoticeSeverity.info,
+                ),
+              ],
               const SizedBox(height: AppSpacing.sm),
               Wrap(
                 spacing: AppSpacing.xs,
@@ -1437,6 +1533,10 @@ class _SkillFixSheetState extends State<_SkillFixSheet> {
                     _IconChoice(
                       label: s,
                       iconPath: widget.icons.skillIcon(s),
+                      // 因血脉不可用的标出来（仍可点 —— 用户可以先去改血脉）
+                      lockedNote: widget.locked.contains(s)
+                          ? widget.lockedReasonOf(s)
+                          : null,
                       onTap: () => Navigator.pop(context, s),
                     ),
                 ],

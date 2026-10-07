@@ -135,6 +135,42 @@ void main() {
     });
   });
 
+  group('技能池要给全量，不能按当前血脉砍掉', () {
+    // 用户指出的问题：雪影娃娃能学 50 个，但冰血脉下只显示 33 个，
+    // 「贪婪」根本不出现 —— 用户没法"先看见再决定换什么血脉"。
+
+    testWidgets('打开技能面板时，血脉技能也在候选里（含当前用不了的）',
+        (tester) async {
+      await _parse(tester);
+
+      // 第 1 只是卡瓦重（雪山），冰血脉。打开它的第一个技能。
+      await _tapScrolled(tester, find.text('晒太阳').first);
+      expect(find.text('修正技能'), findsOneWidget);
+
+      // 面板给的是**完整候选池**（46 个，含全部 18 个血脉技能），
+      // 而不是当前血脉下能用的那 29 个。
+      //
+      // 断言方式：找某个"因血脉不可用"的技能，它应当出现，并带原因说明。
+      // 直接 find 会因为它在滚动区外而扑空，所以用 skipOffstage: false
+      // 把视口外的也算上 —— 这里验的是"有没有渲染出来"，不是"能不能看到"。
+      final lockedChip = find.textContaining('需', skipOffstage: false);
+      expect(lockedChip, findsWidgets,
+          reason: '被血脉锁住的技能要出现在候选里，并说明需要什么血脉；'
+              '藏起来的话用户就不知道"改血脉能学这个"');
+    });
+
+    testWidgets('切到「全部技能」后能搜到任意技能', (tester) async {
+      await _parse(tester);
+      await _tapScrolled(tester, find.text('晒太阳').first);
+      await tester.tap(find.text('全部技能'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField).last, '贪婪');
+      await tester.pumpAndSettle();
+      expect(find.textContaining('贪婪'), findsWidgets);
+    });
+  });
+
   group('换精灵不沿用旧精灵的血脉与技能', () {
     testWidgets('换精灵后血脉重置，技能清空等用户自己配', (tester) async {
       await _parse(tester);
