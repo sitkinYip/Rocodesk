@@ -201,6 +201,51 @@ void main() {
 
       // 「贪婪」在网格里。它在排序后第 40 位，需要滚动才可见 ——
       // 用 scrollUntilVisible 证明它**能被滚到**（懒加载会构建到它）。
+      //
+      // ⚠️ finder 必须限定在 GridView 内：`find.text('贪婪')` 会命中
+      // **搜索框里的 EditableText**，scrollUntilVisible 立刻满足就返回、
+      // 根本没滚 —— 一个看着通过却什么都没验证的假阳性（踩过）。
+      final greedy = find.descendant(
+        of: find.byType(GridView),
+        matching: find.text('贪婪'),
+      );
+      await tester.scrollUntilVisible(
+        greedy,
+        200,
+        scrollable: find.byType(Scrollable).last,
+      );
+      await tester.pumpAndSettle();
+      expect(greedy, findsOneWidget, reason: '贪婪必须能被滚到，否则用户永远配不出这个技能');
+
+      // 直接断言"没被截断"：GridView 的 itemCount 就是候选池大小，
+      // 之前 take(24) 的时候这里会是 24。
+      // 比"某个元素可不可见"稳 —— 那取决于 GridView 的 offstage 行为，
+      // 我按直觉写过一次 findsNothing，结果是假的，白折腾一轮。
+      final grid = tester.widget<GridView>(find.byType(GridView));
+      final delegate = grid.childrenDelegate as SliverChildBuilderDelegate;
+      expect(delegate.childCount, 50,
+          reason: '候选池应当是全量 50 个，不是截断后的 24 个');
+    });
+
+    testWidgets('点被血脉锁住的技能 -> 自动切血脉 + 学会它，并提示', (tester) async {
+      // 用户要求的行为：锁住的技能点了要**自动把血脉切过去**，
+      // 而不是静默选走一个游戏里学不了的配置。
+      await _parse(tester);
+
+      await _tapScrolled(tester, find.text('卡瓦重（雪山附近的样子）').first);
+      await tester.enterText(find.byType(TextField).last, '雪影娃娃');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('雪影娃娃').last);
+      await tester.pumpAndSettle();
+
+      // 换精灵后血脉被重置为"无血脉"，先给它一个冰血脉，
+      // 这样「贪婪」（恶系）才是被锁住的
+      await _tapScrolled(tester, find.text('血脉未识别').first);
+      await tester.tap(find.text('冰').last);
+      await tester.pumpAndSettle();
+
+      // 打开技能面板，滚到「贪婪」并点它
+      await _tapScrolled(tester, find.text('加技能').first);
       final greedy = find.text('贪婪');
       await tester.scrollUntilVisible(
         greedy,
@@ -208,7 +253,51 @@ void main() {
         scrollable: find.byType(Scrollable).last,
       );
       await tester.pumpAndSettle();
-      expect(greedy, findsWidgets, reason: '贪婪必须能被滚到，否则用户永远配不出这个技能');
+      await tester.tap(greedy);
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      // 提示写明发生了什么
+      expect(find.textContaining('已把血脉改成「恶」'), findsOneWidget,
+          reason: '要让用户知道系统替他改了血脉');
+      // 血脉标签真的变成恶了。
+      // 渲染格式是 '$短名血脉'（短名不带「系」字），所以是「恶血脉」——
+      // 不是「恶系血脉」。这个格式我猜错过一次，别改。
+      expect(find.text('恶血脉'), findsWidgets);
+      // 技能进了卡面
+      expect(find.text('贪婪'), findsWidgets);
+    });
+
+    testWidgets('「全部技能」里选一只它压根学不了的 -> 拦下来并说明', (tester) async {
+      // 用户要求：锁住的不能静默选走。
+      // 这里是最彻底的一种"选不了"：技能不在它任何可学列表里，
+      // 切血脉也解决不了 —— 必须拦住，否则生成的是废配置。
+      await _parse(tester);
+      await _tapScrolled(tester, find.text('晒太阳').first);
+
+      // 切到全表，搜一个卡瓦重学不了的技能
+      await tester.tap(find.text('全部技能'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).last, '贪婪');
+      await tester.pumpAndSettle();
+
+      expect(find.text('匹配「贪婪」的 1 个'), findsOneWidget);
+      // ⚠️ 必须限定在网格里点：`find.text('贪婪')` 会**先命中搜索框里的
+      // EditableText**，点它会点空（而且不报错，只是什么都没发生）。
+      final inGrid = find.descendant(
+        of: find.byType(GridView),
+        matching: find.text('贪婪'),
+      );
+      expect(inGrid, findsOneWidget);
+      await tester.tap(inGrid);
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      // 明确告诉用户为什么不行
+      expect(find.textContaining('不在这个精灵能学的技能里'), findsOneWidget);
+      // 而且**没有**被写进卡面（抽屉还开着，说明没选中）
+      expect(find.text('修正技能'), findsOneWidget,
+          reason: '不能静默关掉抽屉把废配置写进去');
     });
   });
 }

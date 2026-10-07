@@ -576,6 +576,85 @@ class _PetRow extends StatelessWidget {
       onSkillsChanged(next);
     }
 
+    /// 选了一个**当前血脉学不了**的技能（如雪影娃娃选恶系的「贪婪」）。
+    ///
+    /// 用户明确要求的行为：**自动把血脉切过去，并清掉占位的血脉技能**。
+    /// 否则这个技能选进去也是个废配置（游戏里学不了）。
+    ///
+    /// 顺序不能换：
+    ///   1. **先捕获**当前的技能布局 —— 回调会让 widget 重建，
+    ///      那时再读 skillList 拿到的可能已经是剪过的版本
+    ///   2. 算出这条技能需要哪个系别的血脉
+    ///   3. 切血脉（`changeBloodline` 会把学不了的血脉技能剪掉）
+    ///   4. 把选中的技能**写回目标槽位** —— 用第 1 步捕获的布局做底，
+    ///      剪掉别的槽位里失效的技能，再把目标槽位换成新技能。
+    ///      这样用户点的那一格一定是他要的技能，不会莫名其妙挪到别处。
+    ///
+    /// 这是同步完成的：三个回调各触发一次重新出码，但都只是写 map，
+    /// 所以最终状态确定、不会互相覆盖。
+    ///
+    /// ⚠️ 全部逻辑写在这一个函数里、不抽子函数 —— 局部函数在 Dart 里
+    /// **必须先声明后使用**，拆开会引入一堆顺序约束（踩过）。
+    void addLockedSkill(String skillName) {
+      final t = tables;
+      final m = t?.skillMatcher;
+      if (t == null || m == null) return;
+
+      // 这条技能需要哪个系别的血脉（技能表里带 type）
+      final type = t.skillTypeByName[skillName];
+      if (type == null) return;
+      const letterByType = {
+        '普通': 'B', '草': 'C', '火': 'D', '水': 'E', '光': 'F', '地': 'G',
+        '冰': 'H', '龙': 'I', '电': 'J', '毒': 'K', '虫': 'L', '武': 'M',
+        '翼': 'N', '萌': 'O', '幽': 'P', '恶': 'Q', '机械': 'R', '幻': 'S',
+      };
+      final letter = letterByType[type];
+      if (letter == null) {
+        // 「首领」「巨兽」这类特殊血脉没有对应的系别技能，理论上到不了这里
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('没有「$type系」血脉，换不了')),
+        );
+        return;
+      }
+
+      // 1) 先留住这一只当前的技能布局
+      final before = List<String>.from(skillList);
+      // 用户点的是空槽就用那个空槽，否则覆盖最后一格
+      final slot = before.indexWhere((s) => s.isEmpty);
+      final target = slot >= 0 ? slot : (before.isEmpty ? 0 : before.length - 1);
+
+      // 3) 切血脉。直接用 onOverride 而不是 changeBloodline：
+      //    第 4 步会自己把失效的技能剪掉并整体写回，
+      //    走 changeBloodline 会多剪一次、多出一次重新出码。
+      //
+      // ⚠️ onOverride 收的是**血脉名**（'恶'），不是字母（'Q'）。
+      //    传字母的话界面会直接显示 "Q血脉"。踩过一次。
+      onOverride(type);
+
+      // 4) 写回目标槽位
+      final after = List<String>.from(before);
+      while (after.length <= target) {
+        after.add('');
+      }
+      for (var i = 0; i < after.length; i++) {
+        if (i != target &&
+            after[i].isNotEmpty &&
+            !m.isAvailable(after[i], effectivePetId, type)) {
+          after[i] = '';
+        }
+      }
+      after[target] = skillName;
+      onSkillsChanged(after);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('已把血脉改成「$type」，并学会「$skillName」'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+
+
     /// 选技能。**任何技能都能点** —— 不只是"可疑"的那些。
     ///
     /// 用户明确要求"拿到一图流后还可以自己搭配"，所以这里给完整能力：
@@ -593,13 +672,18 @@ class _PetRow extends StatelessWidget {
           suggestions: pet.skillSuggestions[current] ?? const [],
           // 完整候选池（含全部 18 个血脉技能）；不可用的那些由 locked 标记
           learnable: currentLearnable,
-          locked: lockedSkills,
-          lockedReasonOf: lockedReason,
+          locked: lockedSkills,          lockedReasonOf: lockedReason,
           icons: icons,
           // 换技能/重新搭配需要全部 579 个技能，不只是这只精灵能学的
           allSkills: t == null
               ? null
               : (t.skillNames.values.toList()..sort()),
+          // 选了"当前血脉学不了"的技能 -> 自动切血脉并清掉占位的血脉技能。
+          // 抽屉自己关掉，因为交互路径比"选一个可用技能"长得多。
+          onPickLocked: (s) {
+            Navigator.pop(context);
+            addLockedSkill(s);
+          },
         ),
       );
       if (chosen == null) return;
@@ -1361,6 +1445,7 @@ class _SkillFixSheet extends StatefulWidget {
     required this.lockedReasonOf,
     required this.icons,
     this.allSkills,
+    this.onPickLocked,
   });
 
   /// 当前的技能名（可能是模型读错的）。
@@ -1385,6 +1470,12 @@ class _SkillFixSheet extends StatefulWidget {
 
   /// 全部技能名（579 个）。为 null 时不给"全部技能"这个范围。
   final List<String>? allSkills;
+
+  /// 选了一个"当前血脉学不了"的技能。参数是技能名。
+  ///
+  /// 由 `_PetRow` 实现：**自动把血脉改成这条技能需要的系别**，
+  /// 并清掉原本占位的血脉技能。为 null 时锁住的技能不可选。
+  final void Function(String skill)? onPickLocked;
 
   @override
   State<_SkillFixSheet> createState() => _SkillFixSheetState();
@@ -1421,6 +1512,50 @@ class _SkillFixSheetState extends State<_SkillFixSheet> {
 
   /// 匹配总数。
   int get _matchCount => _pool.length;
+
+  /// 点击一个候选技能。三种情况分开处理，**不能有"静默写进去"的路径**：
+  ///
+  ///   1. 可用             -> 直接选，关抽屉
+  ///   2. 这只精灵能学、但当前血脉学不了
+  ///                      -> 自动切血脉 + 清掉占位的血脉技能（onPickLocked）
+  ///   3. **这只精灵压根学不了**（"全部技能"范围里选了个它没有的技能）
+  ///                      -> 拦下来，提示不可学。
+  ///                         切血脉也解决不了，写进去只会生成废配置。
+  ///
+  /// [learnable] 是"能学的全部"（含血脉技能），所以它是判断 2 和 3 的分界。
+  void _tapSkill(String s) {
+    final canLearn = widget.learnable.contains(s);
+    final lockedNow = widget.locked.contains(s);
+
+    // 情况 3：彻底学不了
+    if (!canLearn) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('「$s」不在这个精灵能学的技能里，选了游戏里也用不了'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    // 情况 1：当前就能用
+    if (!lockedNow) {
+      Navigator.pop(context, s);
+      return;
+    }
+
+    // 情况 2：能学，但要先改血脉
+    final pick = widget.onPickLocked;
+    if (pick == null) {
+      // 没接回调就别放行 —— 写进去是废配置，不如让用户知道原因
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(widget.lockedReasonOf(s) ?? '当前血脉下不可用')),
+      );
+      return;
+    }
+    // 由父级负责切血脉 + 清占位；它会自己关抽屉
+    pick(s);
+  }
 
   @override
   void dispose() {
@@ -1586,11 +1721,11 @@ class _SkillFixSheetState extends State<_SkillFixSheet> {
                         return _IconChoice(
                           label: s,
                           iconPath: widget.icons.skillIcon(s),
-                          // 因血脉不可用的标出来（仍可点 —— 用户可以先去改血脉）
+                          // 因血脉不可用的标出来；点它会自动切血脉（见 _tapSkill）
                           lockedNote: widget.locked.contains(s)
                               ? widget.lockedReasonOf(s)
                               : null,
-                          onTap: () => Navigator.pop(context, s),
+                          onTap: () => _tapSkill(s),
                         );
                       },
                     ),
