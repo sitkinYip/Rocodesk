@@ -81,6 +81,9 @@ flutter:
     - assets/icons/skill/
     - assets/icons/pet/
     - assets/icons/trait/
+    # 识别提示词。放在资产里而不是代码里：它是领域内容、改动频率高，
+    # 改它不该要求懂 Dart。见 lib/core/prompts.dart。
+    - assets/prompts/
   # 注意：assets/golden/ 故意不打包 —— 它是测试夹具（2.73 MB），
   # 由 test/codec_golden_test.dart **直接读文件**（不走 Flutter 资产层，
   # 跑得快且不需要 binding）。所以它必须留在仓库里，但不能进发布体积。

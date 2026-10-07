@@ -18,6 +18,7 @@ import '../../core/knowledge/knowledge_base.dart';
 import '../../core/knowledge/manifest.dart';
 import '../../core/models.dart';
 import '../../core/pipeline.dart';
+import '../../core/prompts.dart';
 import '../../core/teamcodec.dart';
 import '../../core/vlm_client.dart';
 import '../../theme/tokens.dart';
@@ -44,6 +45,12 @@ class _GeneratorPageState extends State<GeneratorPage> {
 
   CodecTables? _tables;
   TeamCodec? _codec;
+
+  /// 识别提示词。与数据表一起加载 —— 都是"识别这一步的输入"。
+  ///
+  /// 从资产读（`assets/prompts/recognize_team.txt`），不写在客户端代码里：
+  /// 提示词改动的频率远高于 HTTP 调用，而且改它不该要求懂 Dart。
+  Prompts _prompts = Prompts.forTest(Prompts.fallback);
 
   /// 知识库来源与版本，用于在界面上说明"当前用的是哪份数据"。
   String _kbSource = '';
@@ -253,11 +260,16 @@ class _GeneratorPageState extends State<GeneratorPage> {
       final s = widget.store.settings;
       final kb = KnowledgeBase(remoteManifestUrl: s.knowledgeUrl);
 
-      final loaded = await kb.load();
+      // 提示词与数据表并行加载：两者都是识别的输入，没有先后依赖
+      final loadTables = kb.load();
+      final loadPrompts = Prompts.load();
+      final loaded = await loadTables;
+      final prompts = await loadPrompts;
       if (!mounted) return;
       setState(() {
         _tables = loaded.tables;
         _codec = TeamCodec(loaded.tables);
+        _prompts = prompts;
         _kbSource = loaded.fromCache ? '本地缓存' : '内置';
         _kbVersion = loaded.manifest.version;
       });
@@ -343,6 +355,9 @@ class _GeneratorPageState extends State<GeneratorPage> {
         baseUrl: s.effectiveBaseUrl,
         apiKey: s.apiKey,
         model: s.effectiveModel,
+        // 提示词从资产来（`assets/prompts/recognize_team.txt`），
+        // 不在客户端代码里。加载失败会退回一份最短指令并记在 _promptFromAsset。
+        systemPrompt: _prompts.recognizeTeam,
       );
       final res = await client.analyzeImage(img.bytes);
       final rt = normalizeVlmOutput(res.parsed, codec: codec, tables: tables);
