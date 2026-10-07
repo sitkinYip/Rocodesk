@@ -48,17 +48,134 @@ class SkillMatcher {
   SkillMatcher({
     required Map<String, String> skillsByName,
     required Map<String, List<String>> learnsets,
+    Map<String, String> skillsByCode = const {},
+    Map<String, Map<String, List<String>>> learnsetsBySource = const {},
+    Map<String, String> skillTypesByName = const {},
   })  : _byName = skillsByName,
         // ignore: prefer_initializing_formals
-        _learnsets = learnsets;
+        _learnsets = learnsets,
+        _byCode = skillsByCode,
+        _bySource = learnsetsBySource,
+        _skillTypes = skillTypesByName;
 
-  /// 技能名 -> 技能码。
+  /// **技能名 -> 技能码**。
+  ///
+  /// ⚠️ 方向很重要：`learnsets` / `learnsetsBySource` 里存的是**码**，
+  /// 所以要拿名字得用 [_byCode]，不能拿这张表当反查。
+  ///
+  /// 这个参数名（`skillsByName`）容易读成"按名字索引的技能表"，
+  /// 我因此传反过一次，而且静默坏了三处（见 `CodecTables.skillMatcher`
+  /// 的注释）。判断方向的唯一依据是**谁能查到谁**：
+  /// `_byName['冰爪'] == 'bDBK'`。
   final Map<String, String> _byName;
+
+  /// **技能码 -> 技能名**。从码取名字用这张。
+  final Map<String, String> _byCode;
 
   /// 精灵码 -> 可学技能码。
   final Map<String, List<String>> _learnsets;
 
+  /// 精灵码 -> 来源 -> 技能码（level / stone / bloodline）。
+  ///
+  /// **这是游戏机制，不是数据冗余**：技能有三个来源，行为完全不同 ——
+  /// level/stone 一直可用，**bloodline 只在当前血脉对上时才学得了**。
+  final Map<String, Map<String, List<String>>> _bySource;
+
+  /// 技能名 -> 系别。判断血脉技能可用性要用。
+  final Map<String, String> _skillTypes;
+
   bool get isReady => _byName.isNotEmpty;
+
+  /// 有没有按来源拆分的可学数据。没有时血脉过滤退化成"不过滤"。
+  bool get hasSourceData => _bySource.isNotEmpty;
+
+  /// 技能码 -> 名字。优先用 [_byCode]，没有就退回遍历 [_byName]。
+  String? _nameOfCode(String code) {
+    final direct = _byCode[code];
+    if (direct != null) return direct;
+    // 兜底：老调用点可能没传 skillsByCode
+    for (final e in _byName.entries) {
+      if (e.value == code) return e.key;
+    }
+    return null;
+  }
+
+  /// 某只精灵在**当前血脉**下真正能用的技能名（排序后）。
+  ///
+  /// 规则（实测自知识库）：
+  ///   * level / stone 来源的技能 —— 一直可用
+  ///   * bloodline 来源的技能 —— 只有它的系别 ∈ [bloodlineType] 时才可用
+  ///
+  /// 为什么只按血脉判断、不看精灵固定系别：实测每只精灵的 18 个血脉技能
+  /// **恰好覆盖 18 个系别**，而精灵固定系别（1~2 个）本来就包含在自己的
+  /// level/stone 技能里。所以血脉技能是否可用，只由血脉决定。
+  ///
+  /// [bloodlineType] 为 null 时（如"无明显血脉"或特殊血脉）按"不过滤"处理 ——
+  /// 与其猜错让用户少几个能选的技能，不如都放出来，反正最终由 encode 校验。
+  List<String> availableNames(String? petCode, String? bloodlineType) {
+    final src = petCode == null ? null : _bySource[petCode];
+    if (src == null) {
+      // 没有来源数据（老数据包）-> 退回完整可学列表
+      return learnableNames(petCode);
+    }
+
+    final out = <String>{};
+    void addAll(Iterable<String> codes) {
+      for (final c in codes) {
+        final nm = _nameOfCode(c);
+        if (nm != null) out.add(nm);
+      }
+    }
+
+    addAll(src['level'] ?? const []);
+    addAll(src['stone'] ?? const []);
+    addAll(src['other'] ?? const []);
+
+    // 血脉技能：只有系别对上的才可用
+    final bl = src['bloodline'] ?? const [];
+    for (final c in bl) {
+      final nm = _nameOfCode(c);
+      if (nm == null) continue;
+      if (bloodlineType == null || bloodlineType.isEmpty) {
+        // 不知道血脉就不排除，交给用户
+        out.add(nm);
+      } else if (_skillTypes[nm] == bloodlineType) {
+        out.add(nm);
+      }
+    }
+
+    final list = out.toList()..sort();
+    return list;
+  }
+
+  /// 某个技能在**当前血脉**下还能不能用。
+  ///
+  /// 用来实现「改了血脉 -> 清掉学不了的血脉技能」。
+  /// level/stone 技能永远返回 true。
+  bool isAvailable(String skillName, String? petCode, String? bloodlineType) {
+    final src = petCode == null ? null : _bySource[petCode];
+    if (src == null) return true; // 没有来源数据就不拦
+
+    final code = _byName[skillName];
+    if (code == null) return true; // 不在技能表里，不是这里能判断的
+
+    final level = src['level'] ?? const <String>[];
+    final stone = src['stone'] ?? const <String>[];
+    final other = src['other'] ?? const <String>[];
+    final blood = src['bloodline'] ?? const <String>[];
+    if (level.contains(code) || stone.contains(code) || other.contains(code)) {
+      return true;
+    }
+
+    if (!blood.contains(code)) {
+      // 这只精灵根本学不了这个技能（用户从"全部技能"里硬选的）——
+      // 这种情况不在这里拦，允许用户这么配。
+      return true;
+    }
+
+    if (bloodlineType == null || bloodlineType.isEmpty) return true;
+    return _skillTypes[skillName] == bloodlineType;
+  }
 
   /// 调试用：看看内部到底装了多少只精灵的可学数据。
   int get debugLearnsetCount => _learnsets.length;
@@ -69,7 +186,7 @@ class SkillMatcher {
 
   /// 调试用：名字表里有多少条、抽样几个。
   int get debugNameCount => _byName.length;
-  String debugNameOf(String code) => _byName[code] ?? '<missing>';
+  String debugNameOf(String code) => _nameOfCode(code) ?? '<missing>';
 
   /// 这只精灵能学的技能名列表（用于手动填写时的提示范围）。
   List<String> learnableNames(String? petCode) {
@@ -81,7 +198,7 @@ class SkillMatcher {
 
   /// 技能码 -> 技能名，丢掉查不到的。
   List<String> _namesOf(List<String> codes) =>
-      codes.map((c) => _byName[c] ?? '').where((s) => s.isNotEmpty).toList();
+      codes.map((c) => _nameOfCode(c) ?? '').where((s) => s.isNotEmpty).toList();
 
   /// 名字是否是一个真实技能。
   bool isKnownSkill(String name) => _byName.containsKey(name);
@@ -112,7 +229,9 @@ class SkillMatcher {
     if (petLearnset != null && petLearnset.isNotEmpty) {
       pool = _namesOf(petLearnset);
     } else {
-      pool = _byName.values;
+      // 全部技能**名**。注意是 keys 不是 values ——
+      // `_byName` 是名字->码，values 是码。这里要的是名字。
+      pool = _byName.keys;
     }
 
     final out = <SkillSuggestion>[];

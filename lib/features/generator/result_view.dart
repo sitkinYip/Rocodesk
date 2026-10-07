@@ -438,6 +438,54 @@ class _PetRow extends StatelessWidget {
   bool get canEditNature => tables != null && onNatureChanged != null;
   bool get canEditEvs => tables != null && onEvsChanged != null;
 
+  /// 当前血脉对应的系别（用于过滤血脉技能）。
+  ///
+  /// 血脉的 24 条里，18 条 elemental 各自对应一个系别；
+  /// 6 条 special（首领/巨兽/黑魔法/异核/污染/奇异）不对应任何系别 ——
+  /// 所以选了它们时没有血脉技能可用。
+  ///
+  /// 返回 null 表示"不知道血脉"（没识别出来），此时不排除任何技能。
+  String? get currentBloodlineType {
+    final bl = overrideLetter ?? pet.bloodline;
+    if (bl.isEmpty) return null;
+    final t = tables;
+    if (t == null) return null;
+    final letter = _bloodlineLetterOf(bl);
+    if (letter == null) return null;
+    final full = t.bloodline[letter] ?? '';
+    final short = CodecTables.stripBloodline(full);
+    // 只有 elemental 的才是系别；special 的（首领等）返回名字本身，
+    // 但它在 skillTypeByName 里匹配不到任何技能，效果等同"没有可用血脉技能"
+    return short.isEmpty ? null : short;
+  }
+
+  /// 界面上的血脉名/字母 -> 阵容码字母。
+  String? _bloodlineLetterOf(String nameOrLetter) {
+    if (nameOrLetter.length == 1) return nameOrLetter;
+    const known = {
+      '普通': 'B', '草': 'C', '火': 'D', '水': 'E', '光': 'F', '地': 'G',
+      '冰': 'H', '龙': 'I', '电': 'J', '毒': 'K', '虫': 'L', '武': 'M',
+      '翼': 'N', '萌': 'O', '幽': 'P', '恶': 'Q', '机械': 'R', '幻': 'S',
+      '首领': 'T', '巨兽': 'U', '黑魔法': 'V', '异核': 'W', '污染': 'X',
+      '奇异': 'Y',
+    };
+    final n = nameOrLetter.endsWith('血脉')
+        ? nameOrLetter.substring(0, nameOrLetter.length - 2)
+        : nameOrLetter;
+    return known[n];
+  }
+
+  /// 当前血脉下这只精灵真正能用的技能名。
+  ///
+  /// 排序优先"这只精灵的"，然后是别的 —— 让常用项排在前面。
+  List<String> get currentLearnable {
+    final t = tables;
+    if (t == null) return learnable;
+    final m = t.skillMatcher;
+    if (!m.hasSourceData) return learnable;
+    return m.availableNames(effectivePetId, currentBloodlineType);
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
@@ -490,7 +538,8 @@ class _PetRow extends StatelessWidget {
         builder: (_) => _SkillFixSheet(
           readName: current,
           suggestions: pet.skillSuggestions[current] ?? const [],
-          learnable: learnable,
+          // 可学列表按**当前血脉**过滤 —— 血脉变了，一些血脉技能就学不了了
+          learnable: currentLearnable,
           icons: icons,
           // 换技能/重新搭配需要全部 579 个技能，不只是这只精灵能学的
           allSkills: t == null
@@ -500,6 +549,38 @@ class _PetRow extends StatelessWidget {
       );
       if (chosen == null) return;
       replaceSkill(slot, chosen);
+    }
+
+    /// 改血脉。**并且清掉因换血脉而学不了的血脉技能。**
+    ///
+    /// 为什么必须清：血脉技能只有系别对上才学得了（实测每只精灵 18 个
+    /// 血脉技能恰好覆盖 18 个系别）。换了血脉之后，原来学的那几个
+    /// 血脉技能就不成立了 —— 留着会出一串游戏里无效的配置。
+    ///
+    /// 只影响**血脉技能**：level / stone 来源的技能任何血脉下都可用，
+    /// 不会被清掉。用户从"全部技能"里硬选的（这只根本学不了的）
+    /// 也不清 —— 那是他有意为之，不该被系统推翻。
+    void changeBloodline(String? nameOrLetter) {
+      onOverride(nameOrLetter);
+
+      final t = tables;
+      final letter = nameOrLetter == null || nameOrLetter.isEmpty
+          ? null
+          : _bloodlineLetterOf(nameOrLetter);
+      if (t == null) return;
+
+      final newType = letter == null
+          ? null
+          : CodecTables.stripBloodline(t.bloodline[letter] ?? '');
+      final m = t.skillMatcher;
+      if (!m.hasSourceData) return;
+
+      final kept = skillList
+          .where((s) => s.isEmpty || m.isAvailable(s, effectivePetId, newType))
+          .toList();
+      if (kept.length != skillList.length) {
+        onSkillsChanged(kept);
+      }
     }
 
     /// 换精灵：在全部 623 个精灵码里搜。
@@ -625,11 +706,13 @@ class _PetRow extends StatelessWidget {
                         color: TypeColors.textOf(t, Theme.of(context).brightness),
                         imagePath: icons.typeIcon(t),
                       ),
-                    // 血脉：带图标，可点击修改
+                    // 血脉：带图标，可点击修改。
+                    // 注意走的是 changeBloodline（会连带清掉失效的血脉技能），
+                    // 不是直接 onOverride。
                     _BloodlineControl(
                       bloodline: effectiveBloodline,
                       overridden: overrideLetter != null,
-                      onChanged: onOverride,
+                      onChanged: changeBloodline,
                       icons: icons,
                       rankedLetters: bloodlineRanks.forPet(displayName),
                     ),

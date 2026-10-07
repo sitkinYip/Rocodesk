@@ -138,10 +138,29 @@ class _GeneratorPageState extends State<GeneratorPage> {
 
   /// 用户换了精灵 -> 就地重新出码。
   ///
-  /// 换精灵时把这一只的其他覆盖留下（技能/性格/资质）—— 用户可能先改了
-  /// 那些再换精灵；技能学不学得了由界面提示，不在这里悄悄清掉。
+  /// **换精灵时清掉这一只的血脉/性格/资质/技能** —— 理由是用户明确指出的：
+  /// 换了一只之后，原来那只的血脉和技能在新精灵身上不成立，
+  /// 留着会出一串游戏里无效的配置。
+  ///
+  /// 血脉重置为"无血脉"（哨兵 A）而不是删掉覆盖：
+  /// 这样不会回落到**旧精灵识别到的**那个血脉上（那正是要避免的）。
+  /// 技能清空则是留 4 个空槽，等用户自己配。
   void _applyPetFix(int index, String petId) {
-    setState(() => _petOverrides[index] = petId);
+    setState(() {
+      _petOverrides[index] = petId;
+      _bloodlineOverrides[index] = ''; // '' = 明确无血脉
+      _natureOverrides.remove(index);
+      _evOverrides.remove(index);
+      _skillOverrides[index] = const ['', '', '', ''];
+      // 形态选择也清掉：那是旧精灵的形态
+      _variantOverrides.remove(index);
+      final rt = _recognized;
+      if (rt != null && index - 1 < rt.pets.length) {
+        // 旧精灵的"选一个形态"提示也该收起来
+        rt.pets[index - 1].warnings
+            .removeWhere((w) => w.contains('请在下面选一个'));
+      }
+    });
     _reencode();
   }
 

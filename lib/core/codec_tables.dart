@@ -62,6 +62,18 @@ class CodecTables {
                 (v as List).map((e) => e.toString()).toList(),
               ));
 
+  /// 技能名 -> 系别。
+  ///
+  /// 用途：判断某个血脉技能在当前血脉下还能不能用
+  /// （血脉技能只有系别对上才学得了）。
+  late final Map<String, String> skillTypeByName = {
+    for (final e
+        in ((_skills['type_by_code'] as Map<String, dynamic>?) ?? const {})
+            .entries)
+      if ((skillNames[e.key] ?? '').isNotEmpty && '${e.value}'.isNotEmpty)
+        skillNames[e.key]!: '${e.value}',
+  };
+
   late final Map<String, String> skillNames =
       (_skills['by_code'] as Map<String, dynamic>).cast<String, String>();
   late final Map<String, String> skillByName =
@@ -153,16 +165,41 @@ class CodecTables {
   ///
   /// 可选依赖 `learnsets.json`；缺了会退回"在全部技能名里找"。
   ///
-  /// 注意传的是 [skillNames]（技能码 -> 名字）而不是 [skillByName]：
-  /// 可学列表里存的是**技能码**，要先转成名字才能比。这里曾经传反过，
-  /// 导致所有反查都落空、纠错功能静默失效。
+  /// ⚠️ 这里要传 [skillByName]（**技能名 -> 技能码**），不是 [skillNames]。
+  ///
+  /// 这个参数名（`skillsByName`）读起来含糊，我因此传反过一次，
+  /// 而且**没有立刻暴露**：
+  ///   * 纠错 `suggest()` 靠"这只精灵的可学列表"决定候选池，
+  ///     而那个列表本来就是名字 —— 所以主干功能看着正常
+  ///   * 但两处静默坏了：① 精确命中判断 `_byName[q]` 永远 miss；
+  ///     ② "没有可学数据时退回全表" 拿到的是**技能码**而不是名字，
+  ///     等于在码上做模糊匹配，永远匹配不上
+  ///   * 后来新增的 `isAvailable()` 用 `_byName[技能名]` 取码，
+  ///     取到 null 就直接 return true —— 于是"血脉变了要清技能"完全失效
+  ///
+  /// 所以：方向是**名字 -> 码**。改这里之前先看 `SkillMatcher._byName` 的语义。
   late final SkillMatcher skillMatcher = SkillMatcher(
-    skillsByName: skillNames,
+    skillsByName: skillByName,
+    skillsByCode: skillNames,
     learnsets: (_learnsets['by_pet'] as Map<String, dynamic>? ?? const {})
         .map((k, v) => MapEntry(
               k,
               (v as List).map((e) => e.toString()).toList(),
             )),
+    // 按来源拆分（level / stone / bloodline）—— 血脉技能要靠它过滤
+    learnsetsBySource:
+        (_learnsets['by_source'] as Map<String, dynamic>? ?? const {}).map(
+      (pet, v) => MapEntry(
+        pet,
+        (v as Map<String, dynamic>).map(
+          (src, codes) => MapEntry(
+            src,
+            (codes as List).map((e) => e.toString()).toList(),
+          ),
+        ),
+      ),
+    ),
+    skillTypesByName: skillTypeByName,
   );
 
   Map<String, dynamic> get _learnsets =>

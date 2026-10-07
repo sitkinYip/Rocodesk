@@ -333,13 +333,19 @@ class _ParsePageState extends State<ParsePage> {
                 onChooseVariant: (_, _) {},
                 onSkillsChanged: (i, list) =>
                     setState(() => _skillOverrides[i] = list),
-                onOverrideBloodline: (i, letter) => setState(() {
-                  if (letter == null) {
-                    _bloodlineOverrides.remove(i);
-                  } else {
-                    _bloodlineOverrides[i] = letter;
-                  }
-                }),
+                onOverrideBloodline: (i, letter) {
+                  setState(() {
+                    // ⚠️ 这里**不能**用 `remove(i)` 表示"无血脉"。
+                    //
+                    // `null` 的语义是"没有覆盖过"，于是 `_PetRow` 会回落到
+                    // `pet.bloodline`（从码里解码出来的那个）—— 表现就是
+                    // "选了无血脉但标签没变"。这踩过一次。
+                    //
+                    // 空串才是"明确无血脉"（哨兵，与生成页一致）。
+                    _bloodlineOverrides[i] = letter ?? '';
+                  });
+                  _reencode();
+                },
                 onCopy: _copy,
                 // 解析页：码是**输入**，所以：
                 //   * 不给「重新识别」—— 这个页面没有识别这一步
@@ -356,7 +362,15 @@ class _ParsePageState extends State<ParsePage> {
                 petOverrides: _petOverrides,
                 natureOverrides: _natureOverrides,
                 evOverrides: _evOverrides,
-                onPetChanged: (i, id) => setState(() => _petOverrides[i] = id),
+                // 换精灵要清掉这一只的血脉/性格/资质/技能 ——
+                // 旧精灵的那套在新精灵身上不成立（用户明确要求）
+                onPetChanged: (i, id) => setState(() {
+                  _petOverrides[i] = id;
+                  _bloodlineOverrides[i] = ''; // '' = 明确无血脉
+                  _natureOverrides.remove(i);
+                  _evOverrides.remove(i);
+                  _skillOverrides[i] = const ['', '', '', ''];
+                }),
                 onNatureChanged: (i, n) =>
                     setState(() => _natureOverrides[i] = n),
                 onEvsChanged: (i, e) => setState(() => _evOverrides[i] = e),

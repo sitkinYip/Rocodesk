@@ -21,12 +21,28 @@ SkillMatcher _realMatcher() {
   final skills = _read('assets/data/skills.json');
   final learnsets = _read('assets/data/learnsets.json');
   return SkillMatcher(
-    // 注意方向：这里要的是「技能码 -> 名字」（by_code），不是 by_name。
-    // 可学列表里存的是技能码，要转成名字才能比。这里我一开始也传反过。
+    // 方向：`skillsByName` 是**名字 -> 码**。
+    // 这里我也传反过一次（传了 by_code），表现是"精确命中永远 miss"——
+    // 因为 `_byName[q]`（q 是名字）在按码索引的表里查不到。
     skillsByName:
+        (skills['by_name'] as Map<String, dynamic>).cast<String, String>(),
+    // 可学列表 / 按来源里存的是**码**，取名字要用这张
+    skillsByCode:
         (skills['by_code'] as Map<String, dynamic>).cast<String, String>(),
     learnsets: (learnsets['by_pet'] as Map<String, dynamic>).map(
       (k, v) => MapEntry(k, (v as List).map((e) => e.toString()).toList()),
+    ),
+    learnsetsBySource:
+        (learnsets['by_source'] as Map<String, dynamic>? ?? const {}).map(
+      (pet, v) => MapEntry(
+        pet,
+        (v as Map<String, dynamic>).map(
+          (src, codes) => MapEntry(
+            src,
+            (codes as List).map((e) => e.toString()).toList(),
+          ),
+        ),
+      ),
     ),
   );
 }
