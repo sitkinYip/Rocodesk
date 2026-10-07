@@ -717,7 +717,10 @@ class _PetRow extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    Expanded(
+                    // 特性紧贴名字 —— 它是精灵的固有属性（不可改），
+                    // 和名字一样属于"这只精灵是谁"的一部分。
+                    // 放在下面血脉那一行会混淆：血脉是可改的，特性不是。
+                    Flexible(
                       child: _EditableTitle(
                         text: displayName,
                         // 换了精灵用不同颜色标出，让用户知道自己动过什么
@@ -725,11 +728,26 @@ class _PetRow extends StatelessWidget {
                         onTap: canEditPet ? pickPet : null,
                       ),
                     ),
-                    if (!resolved)
+                    // 特性：精灵自带的被动，**不可改**，所以只展示。
+                    // 先取到局部变量：traitName 是 getter，Dart 的类型提升
+                    // 对它不生效，直接判空会报 unchecked_use_of_nullable_value。
+                    if (trait != null && trait.isNotEmpty) ...[
+                      const SizedBox(width: AppSpacing.xs),
+                      Flexible(
+                        child: _TraitChip(
+                          name: trait,
+                          desc: traitDesc,
+                          iconPath: icons.traitIcon(trait),
+                        ),
+                      ),
+                    ],
+                    if (!resolved) ...[
+                      const SizedBox(width: AppSpacing.xs),
                       const SemanticChip(
                         label: '需要对上图鉴',
                         color: Color(0xFFD70015),
                       ),
+                    ],
                   ],
                 ),
                 const SizedBox(height: AppSpacing.sm),
@@ -760,16 +778,6 @@ class _PetRow extends StatelessWidget {
                         label: t,
                         color: TypeColors.textOf(t, Theme.of(context).brightness),
                         imagePath: icons.typeIcon(t),
-                      ),
-                    // 特性：精灵自带的被动，**不可改**，所以只展示。
-                    // 与血脉的区别要分清：血脉 24 选 1 可改，特性天生固定。
-                    // （先取到局部变量：traitName 是 getter，Dart 的类型提升
-                    //   对它不生效，直接判空会报 unchecked_use_of_nullable_value）
-                    if (trait != null && trait.isNotEmpty)
-                      _TraitChip(
-                        name: trait,
-                        desc: traitDesc,
-                        iconPath: icons.traitIcon(trait),
                       ),
                     // 血脉：带图标，可点击修改。
                     // 注意走的是 changeBloodline（会连带清掉失效的血脉技能），
@@ -1395,18 +1403,24 @@ class _SkillFixSheetState extends State<_SkillFixSheet> {
       ? widget.allSkills!
       : widget.learnable;
 
-  /// 过滤后的候选（截前 24 个 —— 再多的用搜索）。
+  /// 过滤后的候选 —— **不再截断**。
+  ///
+  /// 曾经取前 24 个（理由是"再多的用搜索"），结果是**用户根本看不到想要的技能**：
+  /// 雪影娃娃能学 50 个，「贪婪」按名字排序在第 40 位，所以它虽然在数据里、
+  /// 也在候选池里，界面上却完全看不到。
+  ///
+  /// 现在交给懒加载的 GridView（只建可见的那些），所以可以放心给全量。
+  /// 匹配的排在前面（按首次出现位置），让搜索更有用。
   List<String> get _pool {
     final f = _filter;
-    if (f.isEmpty) return _source.take(24).toList();
+    if (f.isEmpty) return _source;
     final hits = _source.where((s) => s.contains(f)).toList();
     hits.sort((a, b) => a.indexOf(f).compareTo(b.indexOf(f)));
-    return hits.take(24).toList();
+    return hits;
   }
 
-  /// 匹配总数（不只是显示出来的 24 个），让用户知道"还有更多"。
-  int get _matchCount =>
-      _filter.isEmpty ? _source.length : _source.where((s) => s.contains(_filter)).length;
+  /// 匹配总数。
+  int get _matchCount => _pool.length;
 
   @override
   void dispose() {
@@ -1419,32 +1433,32 @@ class _SkillFixSheetState extends State<_SkillFixSheet> {
     final c = context.colors;
     // 候选池由 _pool 计算（支持"它能学的 / 全部技能"两种范围）
     final pool = _pool;
+    // 键盘弹出时要让位，否则搜索框会被挡住
+    final keyboard = MediaQuery.viewInsetsOf(context).bottom;
+    final maxH = MediaQuery.sizeOf(context).height - keyboard;
 
     return Padding(
       padding: EdgeInsets.only(
         left: AppSpacing.lg,
         right: AppSpacing.lg,
-        bottom: MediaQuery.viewInsetsOf(context).bottom + AppSpacing.lg,
+        bottom: keyboard,
       ),
-      // 必须给高度上限：SingleChildScrollView 本身不会约束高度，
-      // 内容高于可用空间时会直接溢出（黄黑条纹），而不是变成可滚动。
-      // 键盘弹出时可用空间更小，这个上限尤其要紧。
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.sizeOf(context).height * 0.7,
-        ),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+      // 固定高度（不是 maxHeight）：底部按钮要**钉在底部**，
+      // 只有中间那块滚动。用 maxHeight + 整体滚动会让按钮跟着滚走 ——
+      // 候选多的时候用户得先滚到底才能点"清空"。
+      child: SizedBox(
+        height: maxH * 0.82,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ================= 固定区：标题 / 候选 / 范围 / 搜索 =================
             Text('修正技能', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: AppSpacing.xs),
             Text(
               '图上读到的是「${widget.readName}」',
               style: TextStyle(fontSize: AppType.sCaption, color: c.textSecondary),
             ),
-            const SizedBox(height: AppSpacing.lg),
+            const SizedBox(height: AppSpacing.md),
 
             if (widget.suggestions.isNotEmpty) ...[
               Text(
@@ -1456,34 +1470,38 @@ class _SkillFixSheetState extends State<_SkillFixSheet> {
                 ),
               ),
               const SizedBox(height: AppSpacing.sm),
-              Wrap(
-                spacing: AppSpacing.sm,
-                runSpacing: AppSpacing.sm,
-                children: [
-                  for (final s in widget.suggestions)
-                    _IconChoice(
+              // 候选可能有很多（最多 4 个），横向滚动避免把固定区撑高
+              SizedBox(
+                height: 88,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: widget.suggestions.length,
+                  separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.sm),
+                  itemBuilder: (_, i) {
+                    final s = widget.suggestions[i];
+                    return _IconChoice(
                       label: s.name,
                       badge: '${s.percent}%',
                       iconPath: widget.icons.skillIcon(s.name),
                       highlighted: true,
                       onTap: () => Navigator.pop(context, s.name),
-                    ),
-                ],
+                    );
+                  },
+                ),
               ),
-              const SizedBox(height: AppSpacing.xl),
+              const SizedBox(height: AppSpacing.md),
             ] else ...[
               InlineNotice(
                 message: '没有找到相近的技能。可能是图上字太小看错了，'
                     '也可能这个技能本来就不在它的可学列表里。',
                 severity: NoticeSeverity.info,
               ),
-              const SizedBox(height: AppSpacing.lg),
+              const SizedBox(height: AppSpacing.md),
             ],
 
-            const SizedBox(height: AppSpacing.lg),
             // 范围切换：默认只列"它能学的"，需要自由搭配时切到全表。
             //
-            // 为什么默认限定范围：纠错场景下 46 个候选比 579 个快得多。
+            // 为什么默认限定范围：纠错场景下这只能学的比全表 579 个快得多。
             // 为什么要能切到全表：用户可能就想配一个它学不了的技能
             // （游戏允许，阵容码也存得下），不能因为"不在可学列表"就挡住。
             if (widget.allSkills != null)
@@ -1500,22 +1518,13 @@ class _SkillFixSheetState extends State<_SkillFixSheet> {
                 onSelectionChanged: (s) =>
                     setState(() => _allScope = s.first),
               ),
-            const SizedBox(height: AppSpacing.md),
-
-            Text(
-              '手动填写',
-              style: TextStyle(
-                fontSize: AppType.sCaption,
-                fontWeight: FontWeight.w600,
-                color: c.textSecondary,
-              ),
-            ),
             const SizedBox(height: AppSpacing.sm),
             TextField(
               controller: _c,
               autofocus: false,
               decoration: InputDecoration(
-                hintText: '技能名',
+                hintText: '搜索或直接输入技能名',
+                isDense: true,
                 suffixIcon: IconButton(
                   tooltip: '确定',
                   icon: const Icon(Icons.check, size: 20),
@@ -1525,44 +1534,70 @@ class _SkillFixSheetState extends State<_SkillFixSheet> {
               onChanged: (v) => setState(() => _filter = v.trim()),
               onSubmitted: (v) => Navigator.pop(context, v.trim()),
             ),
-            if (pool.isNotEmpty) ...[
-              const SizedBox(height: AppSpacing.md),
-              Text(
-                _filter.isEmpty
-                    ? (_allScope
-                        ? '全部技能（前 24 个，建议用上面的搜索框）'
-                        : '它能学的技能（前 24 个）')
-                    : '匹配「$_filter」的 $_matchCount 个，显示前 24 个',
-                style:
-                    TextStyle(fontSize: AppType.sCaption, color: c.textTertiary),
-              ),
-              if (!_allScope && widget.locked.isNotEmpty) ...[
-                const SizedBox(height: AppSpacing.xs),
-                InlineNotice(
-                  message: '灰掉的是当前血脉下用不了的技能 —— '
-                      '改血脉后就能选。共 ${widget.locked.length} 个。',
-                  severity: NoticeSeverity.info,
+
+            // ================= 滚动区（懒加载）=================
+            const SizedBox(height: AppSpacing.sm),
+            Row(
+              children: [
+                Text(
+                  _filter.isEmpty
+                      ? (_allScope ? '全部 ${pool.length} 个' : '它能学的 ${pool.length} 个')
+                      : '匹配「$_filter」的 $_matchCount 个',
+                  style: TextStyle(
+                      fontSize: AppType.sCaption, color: c.textTertiary),
                 ),
-              ],
-              const SizedBox(height: AppSpacing.sm),
-              Wrap(
-                spacing: AppSpacing.xs,
-                runSpacing: AppSpacing.xs,
-                children: [
-                  for (final s in pool)
-                    _IconChoice(
-                      label: s,
-                      iconPath: widget.icons.skillIcon(s),
-                      // 因血脉不可用的标出来（仍可点 —— 用户可以先去改血脉）
-                      lockedNote: widget.locked.contains(s)
-                          ? widget.lockedReasonOf(s)
-                          : null,
-                      onTap: () => Navigator.pop(context, s),
+                if (!_allScope && widget.locked.isNotEmpty) ...[
+                  const SizedBox(width: AppSpacing.xs),
+                  // 压缩成一行，把纵向空间留给候选
+                  Flexible(
+                    child: Text(
+                      '· 灰掉的 ${widget.locked.length} 个要先改血脉',
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: AppType.sCaption, color: c.textTertiary),
                     ),
+                  ),
                 ],
-              ),
-            ],
-            const SizedBox(height: AppSpacing.lg),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.xs),
+            Expanded(
+              child: pool.isEmpty
+                  ? Center(
+                      child: Text(
+                        '没有匹配的技能',
+                        style: TextStyle(
+                            fontSize: AppType.sCaption, color: c.textTertiary),
+                      ),
+                    )
+                  : GridView.builder(
+                      // 懒加载：只构建可见的行。所以给全量也不会卡。
+                      padding: EdgeInsets.zero,
+                      gridDelegate:
+                          const SliverGridDelegateWithMaxCrossAxisExtent(
+                        maxCrossAxisExtent: 88,
+                        mainAxisSpacing: AppSpacing.xs,
+                        crossAxisSpacing: AppSpacing.xs,
+                        childAspectRatio: 0.78,
+                      ),
+                      itemCount: pool.length,
+                      itemBuilder: (_, i) {
+                        final s = pool[i];
+                        return _IconChoice(
+                          label: s,
+                          iconPath: widget.icons.skillIcon(s),
+                          // 因血脉不可用的标出来（仍可点 —— 用户可以先去改血脉）
+                          lockedNote: widget.locked.contains(s)
+                              ? widget.lockedReasonOf(s)
+                              : null,
+                          onTap: () => Navigator.pop(context, s),
+                        );
+                      },
+                    ),
+            ),
+
+            // ================= 固定底部按钮栏 =================
+            const SizedBox(height: AppSpacing.sm),
             Row(
               children: [
                 Expanded(
@@ -1581,12 +1616,12 @@ class _SkillFixSheetState extends State<_SkillFixSheet> {
               ],
             ),
           ],
-          ),
         ),
       ),
     );
   }
 }
+
 
 /// 一个形态候选。显示「后缀 + 系别」，因为系别正是区分它们的依据。
 class _VariantChip extends StatelessWidget {

@@ -144,7 +144,7 @@ void main() {
       await _tapScrolled(tester, find.text('晒太阳').first);
 
       expect(find.text('修正技能'), findsOneWidget);
-      expect(find.text('手动填写'), findsOneWidget);
+      expect(find.text('搜索或直接输入技能名'), findsOneWidget);
     });
 
     testWidgets('有「它能学的 / 全部技能」范围切换', (tester) async {
@@ -177,6 +177,38 @@ void main() {
       expect(tester.takeException(), isNull);
       expect(find.text('加技能'), findsWidgets,
           reason: '空槽必须有添加入口，否则删了就加不回来');
+    });
+
+    testWidgets('抽屉不再截断候选 —— 排序靠后的技能也能滚到', (tester) async {
+      // 用户报的问题：雪影娃娃能学 50 个，但「贪婪」按名字排序在第 40 位，
+      // 面板以前只建前 24 个，所以它虽然在数据里却**完全看不到**。
+      await _parse(tester);
+
+      // 先把第 1 只换成雪影娃娃（它的技能池里有贪婪）
+      await _tapScrolled(tester, find.text('卡瓦重（雪山附近的样子）').first);
+      await tester.enterText(find.byType(TextField).last, '雪影娃娃');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('雪影娃娃').last);
+      await tester.pumpAndSettle();
+
+      // 换精灵后技能被清空，出现空槽 -> 点「加技能」打开面板
+      await _tapScrolled(tester, find.text('加技能').first);
+      expect(find.text('修正技能'), findsOneWidget);
+
+      // 面板应当报告完整数量（50 个），而不是"前 24 个"
+      expect(find.textContaining('它能学的 50 个'), findsOneWidget,
+          reason: '要显示真实数量，让用户知道列表没被截断');
+
+      // 「贪婪」在网格里。它在排序后第 40 位，需要滚动才可见 ——
+      // 用 scrollUntilVisible 证明它**能被滚到**（懒加载会构建到它）。
+      final greedy = find.text('贪婪');
+      await tester.scrollUntilVisible(
+        greedy,
+        200,
+        scrollable: find.byType(Scrollable).last,
+      );
+      await tester.pumpAndSettle();
+      expect(greedy, findsWidgets, reason: '贪婪必须能被滚到，否则用户永远配不出这个技能');
     });
   });
 }

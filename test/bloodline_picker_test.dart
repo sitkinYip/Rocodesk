@@ -261,8 +261,12 @@ void main() {
 
       expect(tester.takeException(), isNull, reason: '技能面板溢出');
       expect(find.text('修正技能'), findsOneWidget);
-      expect(find.text('手动填写'), findsOneWidget,
-          reason: '手动填写区也要能看到');
+      // 搜索框（原来的「手动填写」标签已去掉 —— 现在搜索框就是输入框）
+      expect(find.text('搜索或直接输入技能名'), findsOneWidget,
+          reason: '输入区也要能看到');
+      // 底部按钮栏必须钉在底部可见（不再跟着列表滚走）
+      expect(find.text('清空这个技能'), findsOneWidget,
+          reason: '底部按钮栏要固定在底部');
     });
   });
 }
