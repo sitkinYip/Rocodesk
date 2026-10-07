@@ -51,6 +51,17 @@ class CodecTables {
   late final Map<String, String> petByName =
       (_pets['by_name'] as Map<String, dynamic>).cast<String, String>();
 
+  /// 精灵码 -> 系别列表（每只 1~2 个）。
+  ///
+  /// 用途：**阵容码里不含系别**，所以解析路径靠这张表补上系别标签。
+  /// 也是识别路径的对照来源（识别时系别是模型读的，两边不一致说明模型读错）。
+  late final Map<String, List<String>> petTypesByCode =
+      ((_pets['types_by_code'] as Map<String, dynamic>?) ?? const {})
+          .map((k, v) => MapEntry(
+                k,
+                (v as List).map((e) => e.toString()).toList(),
+              ));
+
   late final Map<String, String> skillNames =
       (_skills['by_code'] as Map<String, dynamic>).cast<String, String>();
   late final Map<String, String> skillByName =

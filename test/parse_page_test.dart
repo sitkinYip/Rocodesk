@@ -172,10 +172,11 @@ void main() {
       expect(find.text('重新识别'), findsNothing);
     });
 
-    testWidgets('没有「复制阵容码」按钮 —— 码是刚粘进来的，不该再给一个复制按钮',
-        (tester) async {
+    testWidgets('**有**「复制阵容码」按钮 —— 改完之后那串新码才是要的', (tester) async {
+      // 我一开始判断错了，以为"他本来就有码"所以不需要复制按钮。
+      // 实际上用户改过内容后要复制的是**修改后**的码，按钮是必需的。
       await parseRealCode(tester);
-      expect(find.text('复制阵容码'), findsNothing);
+      expect(find.text('复制阵容码'), findsOneWidget);
     });
 
     testWidgets('阵容码区块的措辞是「修改后的阵容码」，不是「阵容码」', (tester) async {
@@ -185,10 +186,19 @@ void main() {
           reason: '标题应当说明这是改过之后的结果');
     });
 
-    testWidgets('但仍然显示码本身 —— 让用户确认改动生效了', (tester) async {
+    testWidgets('显示码本身 —— 让用户确认改动生效了', (tester) async {
       await parseRealCode(tester);
-      // 原样的码（没做任何改动）应当仍然可见
       expect(find.textContaining('ZZH'), findsWidgets);
+    });
+
+    testWidgets('解析结果展示全部系别（1~2 个），不是只显示血脉', (tester) async {
+      await parseRealCode(tester);
+
+      // 用户反馈"只能展示最后一个血脉，其实是有 3 个"——
+      // 实际是 2 个系别 + 1 个血脉，共 3 个标签。系别原来被丢掉了。
+      // 这里断言卡瓦重（雪山）的两个系别再叠加它的血脉，一共出现 3 个标签。
+      expect(find.text('草'), findsWidgets, reason: '系别「草」应当显示');
+      expect(find.text('冰'), findsWidgets, reason: '系别「冰」应当显示');
     });
   });
 }

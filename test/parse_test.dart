@@ -157,10 +157,30 @@ void main() {
       }
     });
 
-    test('系别为空 —— 阵容码里没有系别，界面据此不显示系别标签', () {
+    test('系别从数据表反查补齐 —— 阵容码里没有，但用户需要它来确认', () {
+      // 曾经验证过"系别为空"，那是错的：阵容码确实不含系别，
+      // 但数据表里有，补上它用户才能一眼看出解析对没对
+      // （卡瓦重的不同形态系别不同：['草'] vs ['草','冰']）。
       for (final p in shown.pets) {
-        expect(p.types, isEmpty,
-            reason: '不能凭空猜系别；留空让界面不显示，比显示错的强');
+        expect(p.types, isNotEmpty,
+            reason: '${p.name}（${p.petId}）应当从数据表查到系别');
+      }
+
+      // 逐只核对名字与系别的对应关系。
+      // 断言的是"名字 -> 系别"这个映射，不假设码里的顺序 ——
+      // 手工推段位索引容易错，这里只依赖解析出来的结果本身。
+      final byName = {for (final p in shown.pets) p.name: p.types};
+      expect(byName['卡瓦重（雪山附近的样子）'], ['草', '冰'],
+          reason: '雪山形态是草+冰（草地形态只有草，这是区分点）');
+      expect(byName['爆焰喷喷'], ['火', '龙']);
+    });
+
+    test('系别可能有 1 个也可能有 2 个，都要展示', () {
+      // 实测分布：294 只单系别、327 只双系别，没有 3 个的。
+      // 用户看到卡片上三个图标以为"3 个血脉"，其实是 2 个系别 + 1 个血脉。
+      for (final p in shown.pets) {
+        expect(p.types.length, inInclusiveRange(1, 2),
+            reason: '${p.name} 的系别数应当在 1~2 之间，实际 ${p.types}');
       }
     });
   });

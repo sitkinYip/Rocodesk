@@ -474,7 +474,9 @@ RecognizedTeam toRecognizedTeam(Team team, CodecTables tables) {
       nature: p.nature,
       evs: p.evsList,
       skills: p.skills,
-      // 系别不在阵容码里，留空 —— 界面会因此不显示系别标签
+      // 系别不在阵容码里，但可以从数据表反查 —— 补上它用户才能
+      // 一眼看出解析对没对（不同形态的系别不同）。
+      types: tables.petTypesByCode[p.petId] ?? const [],
       bloodline: bloodline,
       bloodlineLetter: letter,
       warnings: warnings,
