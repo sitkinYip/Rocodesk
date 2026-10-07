@@ -407,3 +407,84 @@ String? _letterForName(String name) {
   }
   return null;
 }
+
+// ---------------------------------------------------------------------------
+// 解码方向：阵容码 -> 可展示的识别结果
+// ---------------------------------------------------------------------------
+
+/// 把**已解码**的队伍转成界面用的 [RecognizedTeam]。
+///
+/// 这是 [toCodecTeam] 的逆操作，存在的意义是**复用同一个结果页**：
+/// 解析阵容码和识别截图，最终都是"展示一支队伍 + 允许手改 + 重新出码"，
+/// 没有理由写两套界面。
+///
+/// 与识别路径的两个关键差异：
+///   * 解码出来的东西**天然是确定的** —— 精灵码、性格字母、血脉字母都来自
+///     阵容码本身，不存在"模型读错"，所以 `resolved` 一律为真，
+///     也不会产生 [RecognizedPet.variants] 或 `skillSuggestions`。
+///   * 但仍有**信息缺失**：阵容码不含系别，所以 [RecognizedPet.types] 为空
+///     （界面就不显示系别标签，而不是显示错的）。
+///
+/// 数据表认不出的码不会让解析失败 —— 会保留原样并记一条 [warnings]。
+/// 理由：阵容码可能是新版本游戏出的，旧数据表不认识；此时把认得的部分
+/// 正常展示、把不认识的明确标出来，比整串拒绝有用得多。
+RecognizedTeam toRecognizedTeam(Team team, CodecTables tables) {
+  final pets = <RecognizedPet>[];
+  final teamWarnings = <String>[];
+
+  for (final p in team.pets) {
+    // 精灵名以数据表为准（阵容码里只有码）；表里没有就用码本身当名字，
+    // 这样界面上至少有个可读的东西，而不是空白。
+    final name = tables.petNames[p.petId] ??
+        (p.petName.isNotEmpty ? p.petName : p.petId);
+
+    // 血脉：**直接用解码器算好的名字**，不要自己从表里查。
+    //
+    // 这两个来源的形态不同：`codec.bloodline` 表存的是全名「冰系血脉」，
+    // 而界面用的是短名「冰」（[_BloodlineControl] 会自己拼上「血脉」二字）。
+    // 从表里查会得到全名，拼出来就是「冰系血脉血脉」。
+    // `decode` 已经通过别名表把字母转成了短名，这里只做兜底。
+    final letter = p.bloodlineLetter;
+    var bloodline = p.bloodline;
+    if (bloodline.isEmpty && letter.isNotEmpty && letter != noBloodlineLetter) {
+      // 兜底路径：调用方给的是手搓的 Team（没有走 decode），
+      // 这时才需要从表里查，并剥掉「系血脉」「血脉」后缀。
+      final full = tables.bloodline[letter] ?? '';
+      bloodline = full
+          .replaceAll('系血脉', '')
+          .replaceAll('血脉', '')
+          .trim();
+    }
+    if (letter.isNotEmpty &&
+        letter != noBloodlineLetter &&
+        bloodline.isEmpty) {
+      teamWarnings.add('第 ${pets.length + 1} 只的血脉字母「$letter」'
+          '不在当前资料库里，可能游戏更新了');
+    }
+
+    final warnings = <String>[];
+    if (!tables.petNames.containsKey(p.petId)) {
+      warnings.add('精灵码「${p.petId}」不在当前资料库里，可能游戏更新了');
+    }
+
+    pets.add(RecognizedPet(
+      name: name,
+      // 解码出来的码一定是"已确定"的，界面据此允许直接出码
+      petId: p.petId,
+      nature: p.nature,
+      evs: p.evsList,
+      skills: p.skills,
+      // 系别不在阵容码里，留空 —— 界面会因此不显示系别标签
+      bloodline: bloodline,
+      bloodlineLetter: letter,
+      warnings: warnings,
+    ));
+  }
+
+  return RecognizedTeam(
+    pets: pets,
+    teamName: team.name,
+    magic: team.magic,
+    warnings: teamWarnings,
+  );
+}

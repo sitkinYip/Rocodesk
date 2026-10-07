@@ -21,10 +21,17 @@ import '../../theme/typography.dart';
 import '../../widgets/common.dart';
 
 class ToolsPage extends StatelessWidget {
-  const ToolsPage({super.key, required this.onOpenGenerator});
+  const ToolsPage({
+    super.key,
+    required this.onOpenGenerator,
+    required this.onOpenParser,
+  });
 
   /// 打开一图流生成。由外壳提供（它负责 push 路由）。
   final VoidCallback onOpenGenerator;
+
+  /// 打开阵容码解析。
+  final VoidCallback onOpenParser;
 
   @override
   Widget build(BuildContext context) {
@@ -50,18 +57,12 @@ class ToolsPage extends StatelessWidget {
         const SectionHeader(title: '可用', subtitle: '点进去就能用'),
         _MainToolCard(onTap: onOpenGenerator),
         const SizedBox(height: AppSpacing.md),
-        AppGroup(
-          padding: EdgeInsets.zero,
-          child: Column(
-            children: [
-              SettingsRow(
-                title: '阵容码解析',
-                subtitle: '粘贴阵容码反查是哪 6 只、什么性格与三围',
-                leading: _toolIcon(Icons.qr_code_2_outlined),
-                trailing: const _SoonChip(),
-              ),
-            ],
-          ),
+        _ToolCard(
+          title: '阵容码解析',
+          description: '粘贴一串阵容码，反查出这 6 只精灵、性格、个体资质、技能与血脉。'
+              '解析结果同样可以逐项手改，改完重新生成码。',
+          icon: Icons.qr_code_2_outlined,
+          onTap: onOpenParser,
         ),
         const SizedBox(height: AppSpacing.xl),
 
@@ -90,20 +91,6 @@ class ToolsPage extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-
-  static Widget _toolIcon(IconData icon) {
-    return Builder(
-      builder: (context) => Container(
-        width: 32,
-        height: 32,
-        decoration: BoxDecoration(
-          color: context.colors.bgGrouped,
-          borderRadius: AppRadii.thumbR,
-        ),
-        child: Icon(icon, size: 18, color: context.colors.textTertiary),
-      ),
     );
   }
 
@@ -160,14 +147,26 @@ class ToolsPage extends StatelessWidget {
   }
 }
 
-/// 主工具卡：一图流生成。
+/// 工具卡：一个可用功能的入口。
 ///
-/// 用大卡片而不是普通列表行 —— 它是当前**唯一完整可用**的功能，
-/// 视觉权重应当和"计划中"的列表项明显不同，用户一眼知道该点这里。
-class _MainToolCard extends StatelessWidget {
-  const _MainToolCard({required this.onTap});
+/// 所有可用功能都用这一种卡片，视觉权重一致 ——
+/// 用户不需要判断"哪个卡片更重要"，只需要看标题。
+class _ToolCard extends StatelessWidget {
+  const _ToolCard({
+    required this.title,
+    required this.description,
+    required this.icon,
+    required this.onTap,
+    this.tags = const [],
+  });
 
+  final String title;
+  final String description;
+  final IconData icon;
   final VoidCallback onTap;
+
+  /// 卡片底部的小标签（说明它有什么能力）。
+  final List<(String, IconData)> tags;
 
   @override
   Widget build(BuildContext context) {
@@ -194,7 +193,7 @@ class _MainToolCard extends StatelessWidget {
                   color: c.accentSubtle,
                   borderRadius: AppRadii.inputR,
                 ),
-                child: Icon(Icons.auto_awesome, size: 24, color: c.accent),
+                child: Icon(icon, size: 24, color: c.accent),
               ),
               const SizedBox(width: AppSpacing.md),
               Expanded(
@@ -204,10 +203,7 @@ class _MainToolCard extends StatelessWidget {
                     Row(
                       children: [
                         Expanded(
-                          child: Text(
-                            '一图流生成阵容码',
-                            style: context.texts.titleSmall,
-                          ),
+                          child: Text(title, style: context.texts.titleSmall),
                         ),
                         Icon(Icons.chevron_right,
                             size: 20, color: c.textTertiary),
@@ -215,36 +211,28 @@ class _MainToolCard extends StatelessWidget {
                     ),
                     const SizedBox(height: AppSpacing.xs),
                     Text(
-                      '上传阵容截图，自动识别精灵、性格、个体资质、技能与血脉，'
-                      '生成可直接导入游戏的阵容码，以及给官方 AI 助手的描述。',
+                      description,
                       style: TextStyle(
                         fontSize: AppType.sCaption,
                         color: c.textSecondary,
                         height: 1.5,
                       ),
                     ),
-                    const SizedBox(height: AppSpacing.sm),
-                    Wrap(
-                      spacing: AppSpacing.xs,
-                      runSpacing: AppSpacing.xs,
-                      children: const [
-                        SemanticChip(
-                          label: '读系别与血脉图标',
-                          color: Color(0xFF007AFF),
-                          icon: Icons.image_outlined,
-                        ),
-                        SemanticChip(
-                          label: '识别错了可手改',
-                          color: Color(0xFF007AFF),
-                          icon: Icons.edit_outlined,
-                        ),
-                        SemanticChip(
-                          label: '离线可用',
-                          color: Color(0xFF007AFF),
-                          icon: Icons.cloud_off_outlined,
-                        ),
-                      ],
-                    ),
+                    if (tags.isNotEmpty) ...[
+                      const SizedBox(height: AppSpacing.sm),
+                      Wrap(
+                        spacing: AppSpacing.xs,
+                        runSpacing: AppSpacing.xs,
+                        children: [
+                          for (final (label, tagIcon) in tags)
+                            SemanticChip(
+                              label: label,
+                              color: c.accent,
+                              icon: tagIcon,
+                            ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -256,26 +244,25 @@ class _MainToolCard extends StatelessWidget {
   }
 }
 
-/// 「未实现」标记。
-class _SoonChip extends StatelessWidget {
-  const _SoonChip();
+/// 一图流生成的卡片。只是 [_ToolCard] 的一个具体实例。
+class _MainToolCard extends StatelessWidget {
+  const _MainToolCard({required this.onTap});
+
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final c = context.colors;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(
-        color: c.bgGrouped,
-        borderRadius: AppRadii.pillR,
-      ),
-      child: Text(
-        '计划中',
-        style: TextStyle(
-          fontSize: AppType.sCaption,
-          color: c.textTertiary,
-        ),
-      ),
+    return _ToolCard(
+      title: '一图流生成阵容码',
+      description: '上传阵容截图，自动识别精灵、性格、个体资质、技能与血脉，'
+          '生成可直接导入游戏的阵容码，以及给官方 AI 助手的描述。',
+      icon: Icons.auto_awesome,
+      onTap: onTap,
+      tags: const [
+        ('读系别与血脉图标', Icons.image_outlined),
+        ('识别错了可手改', Icons.edit_outlined),
+        ('离线可用', Icons.cloud_off_outlined),
+      ],
     );
   }
 }

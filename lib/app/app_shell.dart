@@ -18,8 +18,11 @@ library;
 
 import 'package:flutter/material.dart';
 
+import '../core/bloodline_ranks.dart';
+import '../core/icon_assets.dart';
 import '../theme/tokens.dart';
 import '../features/generator/generator_page.dart';
+import '../features/parser/parse_page.dart';
 import '../features/settings/settings_page.dart';
 import '../features/tools/tools_page.dart';
 import 'settings.dart';
@@ -36,10 +39,42 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   int _index = 0;
 
+  /// 纠错面板用的参考图标 + 血脉候选排序。
+  ///
+  /// 提到外壳这一层加载**只做一次**，两个功能页（识别 / 解析）共用。
+  /// 放在各自页面里会让每次进入都重新读一遍索引。
+  IconAssets _icons = IconAssets.empty();
+  BloodlineRanks _bloodlineRanks = BloodlineRanks.empty();
+
   static const _destinations = <_Destination>[
     _Destination('工具', Icons.grid_view_outlined, Icons.grid_view_rounded),
     _Destination('设置', Icons.settings_outlined, Icons.settings),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSharedAssets();
+  }
+
+  Future<void> _loadSharedAssets() async {
+    try {
+      final icons = await IconAssets.load();
+      final ranks = await BloodlineRanks.load();
+      if (!mounted) return;
+      setState(() {
+        _icons = icons;
+        _bloodlineRanks = ranks;
+      });
+    } catch (_) {
+      // 图标是可选增强：加载失败就退化成纯文字，不影响功能
+      if (!mounted) return;
+      setState(() {
+        _icons = IconAssets.empty();
+        _bloodlineRanks = BloodlineRanks.empty();
+      });
+    }
+  }
 
   /// 打开一图流生成。
   ///
@@ -54,11 +89,26 @@ class _AppShellState extends State<AppShell> {
     );
   }
 
+  /// 打开阵容码解析。
+  void _openParser() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ParsePage(
+          icons: _icons,
+          bloodlineRanks: _bloodlineRanks,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final wide = MediaQuery.sizeOf(context).width >= 720;
     final pages = <Widget>[
-      ToolsPage(onOpenGenerator: _openGenerator),
+      ToolsPage(
+        onOpenGenerator: _openGenerator,
+        onOpenParser: _openParser,
+      ),
       SettingsPage(store: widget.store),
     ];
 
